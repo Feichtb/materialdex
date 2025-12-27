@@ -20,7 +20,17 @@ namespace Materialdex
     /// </summary>
     public partial class MaterialdexDockablePane : UserControl, IDockablePaneProvider, IDisposable
     {
-        private const string DEFAULT_URL = "http://localhost:3000";
+        // Production URL - deployed on Netlify
+        // Materialdex web app: https://materialdex.netlify.app
+        private const string PRODUCTION_URL = "https://materialdex.netlify.app";
+        
+        // Development URL - for local development
+        private const string DEVELOPMENT_URL = "http://localhost:3000";
+        
+        // Set to true to use production URL, false for local development
+        private const bool USE_PRODUCTION = true;
+        
+        private const string DEFAULT_URL = USE_PRODUCTION ? PRODUCTION_URL : DEVELOPMENT_URL;
         private const int RETRY_INTERVAL_SECONDS = 5; // Check connectivity every 5 seconds
         private bool _isInitialized = false;
         private string _webAppUrl = DEFAULT_URL;
@@ -479,6 +489,31 @@ namespace Materialdex
                         SendThemeToWebView();
                         // Also send project info after page loads
                         SendProjectInfoToWebView();
+                        
+                        // Pre-extract materials so they're ready when requested
+                        if (_cachedMaterials == null || _cachedMaterials.Count == 0)
+                        {
+                            if (App._uiApplication != null)
+                            {
+                                try
+                                {
+                                    Document doc = App._uiApplication.ActiveUIDocument.Document;
+                                    _lastDocument = doc;
+                                    _cachedMaterials = MaterialExtractor.ExtractMaterials(doc);
+                                    Debug.WriteLine($"Pre-extracted {_cachedMaterials.Count} materials from model");
+                                    
+                                    // Send materials automatically if extracted
+                                    if (_cachedMaterials.Count > 0)
+                                    {
+                                        SendMaterialsToWebView(_cachedMaterials);
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    Debug.WriteLine($"Error pre-extracting materials: {ex.Message}");
+                                }
+                            }
+                        }
                     });
                 });
             }
@@ -522,8 +557,34 @@ namespace Materialdex
                         {
                             Debug.WriteLine("Materials requested from web");
                             
-                            // Extract and cache materials if needed
-                            ExtractAndCacheMaterials();
+                            // If no cached materials, try to extract from active document
+                            if (_cachedMaterials == null || _cachedMaterials.Count == 0)
+                            {
+                                // Try to get active document and extract materials
+                                if (App._uiApplication != null)
+                                {
+                                    try
+                                    {
+                                        Document doc = App._uiApplication.ActiveUIDocument.Document;
+                                        _lastDocument = doc;
+                                        _cachedMaterials = MaterialExtractor.ExtractMaterials(doc);
+                                        UpdateStatus($"Extracted {_cachedMaterials.Count} materials from model");
+                                        
+                                        // Also send project info when document is set
+                                        SendProjectInfoToWebView();
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        UpdateStatus($"Error extracting materials: {ex.Message}");
+                                        Debug.WriteLine($"Error extracting materials: {ex.Message}");
+                                    }
+                                }
+                                else
+                                {
+                                    // Fallback: try to extract via App method
+                                    ExtractAndCacheMaterials();
+                                }
+                            }
                             
                             // Send all cached materials (no pagination)
                             if (_cachedMaterials != null && _cachedMaterials.Count > 0)
@@ -532,7 +593,7 @@ namespace Materialdex
                             }
                             else
                             {
-                                UpdateStatus("No materials available. Please use 'Extract Materials' button first.");
+                                UpdateStatus("No materials available. Please open a Revit document with materials.");
                             }
                         }
                         else if (type == "extractMaterials")
