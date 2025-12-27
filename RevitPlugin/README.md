@@ -18,7 +18,7 @@ dotnet --version
 The plugin references Revit 2026 API assemblies from the default installation path:
 - `C:\Program Files\Autodesk\Revit 2026\`
 
-### 3. WebView2 Runtime
+### 3. WebView2 Runtime 
 Usually pre-installed on Windows 10/11. If not:
 https://developer.microsoft.com/en-us/microsoft-edge/webview2/
 
