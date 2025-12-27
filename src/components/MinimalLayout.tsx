@@ -109,11 +109,16 @@ export default function MinimalLayout({
     
     try {
       // Use Firebase Functions for scanning (longer timeout, no 30s limit)
-      // Falls back to local API in development if NEXT_PUBLIC_FIREBASE_FUNCTIONS_URL is not set
-      const firebaseUrl = process.env.NEXT_PUBLIC_FIREBASE_FUNCTIONS_URL;
+      // Hardcoded for production since env vars can be tricky with Next.js static builds
+      const isProduction = typeof window !== 'undefined' && 
+        !window.location.hostname.includes('localhost');
+      const firebaseUrl = process.env.NEXT_PUBLIC_FIREBASE_FUNCTIONS_URL || 
+        (isProduction ? 'https://us-central1-materialdex-677c3.cloudfunctions.net' : null);
       const scanUrl = firebaseUrl 
         ? `${firebaseUrl}/scanMaterial`
         : '/api/scan-material';
+      
+      console.log('[Materialdex] Using scan URL:', scanUrl);
       
       const response = await fetch(scanUrl, {
         method: 'POST',
