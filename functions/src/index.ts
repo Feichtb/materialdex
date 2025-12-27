@@ -92,14 +92,47 @@ interface SearchResult {
   snippet: string;
 }
 
+type LinkConfidence =
+  | "direct_document"
+  | "catalog_page"
+  | "product_line_doc"
+  | "sustainability_page"
+  | "news_article"
+  | "general_page"
+  | "wrong_manufacturer";
+
 interface CategorizedLink {
   url: string;
   title: string;
   snippet: string;
-  category: string;
+  category: "epd" | "hpd" | "declare" | "voc" | "product_page" | "manufacturer" | "wrong_manufacturer" | "unknown";
   confidence: number;
+  confidenceLevel: LinkConfidence;
   reason: string;
+  needsVerification?: boolean;
 }
+
+interface DocSearchResult {
+  categorizedLinks: CategorizedLink[];
+  byType: {
+    epd: CategorizedLink[];
+    hpd: CategorizedLink[];
+    declare: CategorizedLink[];
+    voc: CategorizedLink[];
+    product_page: CategorizedLink[];
+  };
+}
+
+// Confidence scores
+const CONFIDENCE_SCORES: Record<LinkConfidence, number> = {
+  direct_document: 1.0,
+  catalog_page: 0.85,
+  product_line_doc: 0.75,
+  sustainability_page: 0.6,
+  news_article: 0.2,
+  general_page: 0.3,
+  wrong_manufacturer: 0,
+};
 
 // ============================================================================
 // OPENAI CLIENTS
@@ -232,10 +265,59 @@ function getManufacturerKeywords(manufacturer: string): string[] {
   return lower.split(/[\s-]+/).filter((w) => w.length > 2);
 }
 
+/**
+ * Detect likely fabricated/hallucinated URLs
+ */
+function isFabricatedUrl(url: string): boolean {
+  const urlLower = url.toLowerCase();
+
+  // Pattern 1: Generic product-based PDF names
+  if (/[a-z]+epd\.pdf|[a-z]+hpd\.pdf|[a-z]+-epd\.pdf|[a-z]+-hpd\.pdf/i.test(urlLower)) {
+    if (!urlLower.includes("environdec.com") &&
+        !urlLower.includes("hpdrepository") &&
+        !urlLower.includes("ul.com")) {
+      return true;
+    }
+  }
+
+  // Pattern 2: UUIDs in URLs (often fabricated)
+  const uuidPattern = /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i;
+  if (uuidPattern.test(url) && !urlLower.includes("ul.com") && !urlLower.includes("spot.ul.com")) {
+    return true;
+  }
+
+  // Pattern 3: Overly specific file paths
+  if (/\/documents\/.*\/epd\/.*epd.*\.pdf$/i.test(urlLower)) {
+    return true;
+  }
+
+  // Pattern 4: Very long paths
+  const pathParts = url.split("/");
+  if (pathParts.length > 8) {
+    return true;
+  }
+
+  // Pattern 5: Suspiciously clean format
+  if (/\/([\w-]+)-(epd|hpd|declare)\.pdf$/i.test(urlLower)) {
+    if (!urlLower.includes("environdec") && !urlLower.includes("hpdrepository")) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+interface CombinedValidationResult {
+  valid: boolean;
+  usable: boolean;
+  manufacturerMatch: boolean;
+  reason: string;
+}
+
 async function validateUrlComplete(
   url: string,
   manufacturer: string | null
-): Promise<{valid: boolean; usable: boolean; manufacturerMatch: boolean; reason: string}> {
+): Promise<CombinedValidationResult> {
   console.log(`[VALIDATE] Checking: ${url}`);
 
   if (isGenericHomepage(url)) {
@@ -276,7 +358,6 @@ async function validateUrlComplete(
       return {valid: false, usable: false, manufacturerMatch: false, reason: "Page too short"};
     }
 
-    // Check for error pages
     const contentLower = content.toLowerCase();
     const errorIndicators = ["page not found", "404", "not found", "no results found"];
     const errorCount = errorIndicators.filter((e) => contentLower.includes(e)).length;
@@ -312,15 +393,189 @@ async function validateUrlComplete(
 }
 
 // ============================================================================
-// DOC SEARCH
+// AI CATEGORIZATION
+// ============================================================================
+
+async function categorizeLinks(
+  results: SearchResult[],
+  productName: string,
+  manufacturer: string | null,
+  client: OpenAI
+): Promise<CategorizedLink[]> {
+  if (results.length === 0) return [];
+
+  const linksText = results.map((r, i) =>
+    `${i + 1}. URL: ${r.url}\n   Title: ${r.title}\n   Snippet: ${r.snippet}`
+  ).join("\n\n");
+
+  try {
+    const response = await client.chat.completions.create({
+      model: "sonar",
+      messages: [
+        {
+          role: "system",
+          content: `You categorize sustainability documentation links with CONFIDENCE LEVELS.
+
+## Categories:
+- "epd": Environmental Product Declaration
+- "hpd": Health Product Declaration  
+- "declare": Declare label (Living Building Challenge)
+- "voc": VOC certification, GREENGUARD
+- "product_page": Product information (not certification)
+- "manufacturer": General manufacturer page
+- "wrong_manufacturer": Documentation for a COMPLETELY DIFFERENT manufacturer
+- "unknown": Cannot determine
+
+## Confidence Levels:
+- "direct_document": Actual EPD/HPD PDF, or registry page
+- "catalog_page": Documentation catalog, library, or downloads page
+- "product_line_doc": Doc for SAME manufacturer but possibly different product variant
+- "sustainability_page": Sustainability page that MAY CONTAIN links to actual docs
+- "news_article": News/press release/announcement (NOT the actual doc)
+- "general_page": General info page
+- "wrong_manufacturer": Completely different manufacturer
+
+Return JSON array:
+[
+  {
+    "index": 1,
+    "category": "epd",
+    "confidenceLevel": "direct_document",
+    "reason": "EPD PDF from manufacturer",
+    "needsVerification": false,
+    "manufacturerFound": true
+  }
+]`,
+        },
+        {
+          role: "user",
+          content: `Categorize these links for:
+Product: ${productName}
+${manufacturer ? `Manufacturer: ${manufacturer}` : ""}
+
+Links to categorize:
+${linksText}`,
+        },
+      ],
+      temperature: 0,
+    });
+
+    const responseText = response.choices[0]?.message?.content || "";
+
+    let categories: Array<{
+      index: number;
+      category: string;
+      confidenceLevel: LinkConfidence;
+      reason: string;
+      needsVerification?: boolean;
+    }> = [];
+
+    try {
+      const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        categories = JSON.parse(jsonMatch[0]);
+      }
+    } catch {
+      console.error("Failed to parse categorization:", responseText);
+    }
+
+    return results.map((result, i) => {
+      const cat = categories.find((c) => c.index === i + 1);
+
+      let confidenceLevel: LinkConfidence = "general_page";
+      let category: CategorizedLink["category"] = "unknown";
+      let reason = "Could not categorize";
+      let needsVerification = false;
+
+      if (cat) {
+        confidenceLevel = cat.confidenceLevel || "general_page";
+        category = cat.category as CategorizedLink["category"] || "unknown";
+        reason = cat.reason || "";
+        needsVerification = cat.needsVerification || false;
+      }
+
+      // Force correct categorization based on URL patterns
+      const urlLower = result.url.toLowerCase();
+      const titleLower = result.title.toLowerCase();
+
+      // EPD detection
+      if (urlLower.includes("environdec.com/library/epd")) {
+        category = "epd";
+        confidenceLevel = "direct_document";
+        reason = "EPD from International EPD System";
+      } else if ((urlLower.includes("epd") && urlLower.endsWith(".pdf")) ||
+                 titleLower.includes("environmental product declaration")) {
+        category = "epd";
+        confidenceLevel = "direct_document";
+        reason = "EPD document (PDF)";
+      }
+      // HPD detection
+      else if (urlLower.includes("hpdrepository.hpd-collaborative.org") && urlLower.includes("/repository/")) {
+        category = "hpd";
+        confidenceLevel = "direct_document";
+        reason = "HPD from HPD Repository";
+      } else if ((urlLower.includes("hpd") && urlLower.endsWith(".pdf")) ||
+                 titleLower.includes("health product declaration")) {
+        category = "hpd";
+        confidenceLevel = "direct_document";
+        reason = "HPD document (PDF)";
+      }
+      // Declare detection
+      else if (urlLower.includes("declare.living-future.org/products/")) {
+        category = "declare";
+        confidenceLevel = "direct_document";
+        reason = "Declare label from Living Future";
+      } else if (titleLower.includes("declare label") || titleLower.includes("red list free")) {
+        category = "declare";
+        confidenceLevel = "direct_document";
+        reason = "Declare/Red List Free certification";
+      }
+      // VOC detection
+      else if (urlLower.includes("spot.ul.com") && urlLower.includes("/products/")) {
+        category = "voc";
+        confidenceLevel = "direct_document";
+        reason = "GREENGUARD/VOC from UL SPOT";
+      } else if (titleLower.includes("greenguard") || urlLower.includes("greenguard")) {
+        category = "voc";
+        confidenceLevel = "direct_document";
+        reason = "GREENGUARD certification";
+      }
+
+      // Get numeric confidence from level
+      const confidence = CONFIDENCE_SCORES[confidenceLevel] || 0.3;
+
+      return {
+        ...result,
+        category,
+        confidence,
+        confidenceLevel,
+        reason,
+        needsVerification,
+      };
+    });
+  } catch (error) {
+    console.error("Categorization error:", error);
+    return results.map((r) => ({
+      ...r,
+      category: "unknown" as const,
+      confidence: 0,
+      confidenceLevel: "general_page" as LinkConfidence,
+      reason: "Categorization failed",
+    }));
+  }
+}
+
+// ============================================================================
+// DOC SEARCH (FULL VERSION WITH PROGRESS)
 // ============================================================================
 
 async function searchForDocumentation(
   productName: string,
   manufacturer: string | null,
-  perplexityKey: string
-): Promise<{categorizedLinks: CategorizedLink[]; byType: Record<string, CategorizedLink[]>}> {
-  console.log(`[DOC-SEARCH] Searching for: ${productName} (${manufacturer || "no manufacturer"})`);
+  perplexityKey: string,
+  onProgress?: (message: string) => void
+): Promise<DocSearchResult> {
+  console.log(`[DOC-SEARCH] Starting for: ${productName} (manufacturer: ${manufacturer || "none"})`);
 
   const client = new OpenAI({
     apiKey: perplexityKey,
@@ -337,10 +592,12 @@ async function searchForDocumentation(
 
   const allResults: SearchResult[] = [];
 
-  // Run searches in parallel
+  // Run searches in parallel with progress updates
   const searchPromises = searchQueries.map(async ({name, query}) => {
     try {
       console.log(`[DOC-SEARCH] Searching ${name}...`);
+      onProgress?.(`Searching ${name} pages...`);
+
       const response = await client.chat.completions.create({
         model: "sonar",
         messages: [
@@ -362,14 +619,20 @@ Search: ${query}`,
       const text = response.choices[0]?.message?.content || "";
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]
+        const cleanedJson = jsonMatch[0]
           .replace(/\}\s*\[\d+\]\s*,/g, "},")
           .replace(/\}\s*\[\d+\]\s*\]/g, "}]")
           .replace(/"\s*\[\d+\]\s*,/g, "\",")
-          .replace(/"\s*\[\d+\]\s*\}/g, "\"}"));
-        const results = (parsed.results || []).filter((r: SearchResult) =>
-          r.url && r.url.startsWith("http"));
+          .replace(/"\s*\[\d+\]\s*\}/g, "\"}");
+        const parsed = JSON.parse(cleanedJson);
+        const results = (parsed.results || [])
+          .filter((r: SearchResult) => r.url && r.url.startsWith("http"))
+          .filter((r: SearchResult) => !isFabricatedUrl(r.url));
+
         console.log(`[DOC-SEARCH] Found ${results.length} ${name} results`);
+        if (results.length > 0) {
+          onProgress?.(`Found ${results.length} ${name} page${results.length > 1 ? "s" : ""}`);
+        }
         return results;
       }
     } catch (e) {
@@ -382,54 +645,88 @@ Search: ${query}`,
   searchResults.forEach((results) => allResults.push(...results));
 
   console.log(`[DOC-SEARCH] Total results: ${allResults.length}`);
+  onProgress?.(`Found ${allResults.length} total pages`);
+
+  // Categorize links using AI
+  console.log(`[DOC-SEARCH] Categorizing ${allResults.length} links...`);
+  onProgress?.(`Categorizing ${allResults.length} links...`);
+
+  let categorizedLinks = await categorizeLinks(allResults, productName, manufacturer, client);
 
   // Validate URLs in parallel
-  console.log(`[DOC-SEARCH] Validating ${allResults.length} URLs...`);
+  console.log(`[DOC-SEARCH] Validating ${categorizedLinks.length} URLs...`);
+  onProgress?.(`Validating ${categorizedLinks.length} URLs...`);
+
+  const linksToValidate = categorizedLinks.filter((l) => l.category !== "wrong_manufacturer" && l.category !== "unknown");
+
   const validationResults = await Promise.all(
-    allResults.map(async (result) => {
-      const validation = await validateUrlComplete(result.url, manufacturer);
-      return {result, validation};
+    linksToValidate.map(async (link) => {
+      const validation = await validateUrlComplete(link.url, manufacturer);
+      return {url: link.url, validation};
     })
   );
 
-  // Filter and categorize
-  const validResults = validationResults
-    .filter(({validation}) => validation.valid)
-    .map(({result}) => result);
+  const validationMap = new Map(validationResults.map((r) => [r.url, r.validation]));
 
-  console.log(`[DOC-SEARCH] Valid results: ${validResults.length}`);
-
-  // Simple categorization based on URL patterns
-  const categorizedLinks: CategorizedLink[] = validResults.map((r) => {
-    const urlLower = r.url.toLowerCase();
-    let category = "product_page";
-    if (urlLower.includes("epd") || urlLower.includes("environdec")) category = "epd";
-    else if (urlLower.includes("hpd") || urlLower.includes("hpdrepository")) category = "hpd";
-    else if (urlLower.includes("declare") || urlLower.includes("living-future")) category = "declare";
-    else if (urlLower.includes("greenguard") || urlLower.includes("ul.com")) category = "voc";
-
-    return {
-      url: r.url,
-      title: r.title,
-      snippet: r.snippet,
-      category,
-      confidence: 0.7,
-      reason: `Categorized by URL pattern`,
-    };
+  // Update links based on validation
+  categorizedLinks = categorizedLinks.map((link) => {
+    const validation = validationMap.get(link.url);
+    if (validation) {
+      if (!validation.usable) {
+        return {
+          ...link,
+          category: "unknown" as const,
+          confidenceLevel: "general_page" as LinkConfidence,
+          confidence: 0,
+          reason: `REJECTED (not usable): ${validation.reason}`,
+        };
+      } else if (!validation.manufacturerMatch) {
+        return {
+          ...link,
+          category: "wrong_manufacturer" as const,
+          confidenceLevel: "wrong_manufacturer" as LinkConfidence,
+          confidence: 0,
+          reason: `REJECTED: ${validation.reason}`,
+        };
+      }
+    }
+    return link;
   });
 
+  // Filter out invalid links
+  categorizedLinks = categorizedLinks.filter((l) =>
+    l.category !== "unknown" || !validationMap.has(l.url)
+  );
+
+  // Sort by confidence
+  const sortedLinks = [...categorizedLinks].sort((a, b) => b.confidence - a.confidence);
+
   // Group by type
-  const byType: Record<string, CategorizedLink[]> = {
-    epd: categorizedLinks.filter((l) => l.category === "epd"),
-    hpd: categorizedLinks.filter((l) => l.category === "hpd"),
-    declare: categorizedLinks.filter((l) => l.category === "declare"),
-    voc: categorizedLinks.filter((l) => l.category === "voc"),
-    product_page: categorizedLinks.filter((l) => l.category === "product_page"),
+  const byType = {
+    epd: sortedLinks.filter((l) => l.category === "epd"),
+    hpd: sortedLinks.filter((l) => l.category === "hpd"),
+    declare: sortedLinks.filter((l) => l.category === "declare"),
+    voc: sortedLinks.filter((l) => l.category === "voc"),
+    product_page: sortedLinks.filter((l) => l.category === "product_page"),
   };
 
   console.log(`[DOC-SEARCH] Final: EPD=${byType.epd.length}, HPD=${byType.hpd.length}, Declare=${byType.declare.length}, VOC=${byType.voc.length}`);
 
-  return {categorizedLinks, byType};
+  // Send final summary
+  const finalCounts: string[] = [];
+  if (byType.epd.length > 0) finalCounts.push(`${byType.epd.length} EPD`);
+  if (byType.hpd.length > 0) finalCounts.push(`${byType.hpd.length} HPD`);
+  if (byType.declare.length > 0) finalCounts.push(`${byType.declare.length} Declare`);
+  if (byType.voc.length > 0) finalCounts.push(`${byType.voc.length} VOC`);
+  if (byType.product_page.length > 0) finalCounts.push(`${byType.product_page.length} product page${byType.product_page.length > 1 ? "s" : ""}`);
+
+  if (finalCounts.length > 0) {
+    onProgress?.(`Documentation search complete: ${finalCounts.join(", ")}`);
+  } else {
+    onProgress?.(`No documentation links found`);
+  }
+
+  return {categorizedLinks: sortedLinks, byType};
 }
 
 // ============================================================================
@@ -438,7 +735,7 @@ Search: ${query}`,
 
 export const scanMaterial = functions
   .runWith({
-    timeoutSeconds: 540, // 9 minutes - max for Firebase
+    timeoutSeconds: 540, // 9 minutes
     memory: "512MB",
   })
   .https.onRequest((req: Request, res: Response) => {
@@ -559,6 +856,9 @@ export const scanMaterial = functions
         const recommendations: ProductRecommendation[] = [];
         const totalProducts = Math.min(sortedRecs.length, 3);
 
+        // Auto-select threshold - only use links with high confidence
+        const autoSelectThreshold = 0.8;
+
         for (let i = 0; i < totalProducts; i++) {
           const rec = sortedRecs[i];
           const productNum = i + 1;
@@ -578,41 +878,77 @@ export const scanMaterial = functions
             try {
               sendProgress(`Searching documentation for ${rec.product_label}...`);
 
+              // Create progress callback with product context
+              const productProgressCallback = (message: string) => {
+                sendProgress(`Product ${productNum}: ${message}`);
+              };
+
               const docSearch = await searchForDocumentation(
                 rec.product_label,
                 rec.manufacturer || null,
-                perplexityKey
+                perplexityKey,
+                productProgressCallback
               );
 
-              // Update checklist with best links
+              // Update checklist with best links (only high confidence)
               if (docSearch.byType.epd.length > 0) {
-                docChecklist.epd = {status: "verified", doc_url: docSearch.byType.epd[0].url, registry_id: null};
+                const sorted = docSearch.byType.epd.sort((a, b) => b.confidence - a.confidence);
+                const best = sorted[0];
+                if (best && best.confidence >= autoSelectThreshold) {
+                  docChecklist.epd = {status: "verified", doc_url: best.url, registry_id: null};
+                }
               }
               if (docSearch.byType.hpd.length > 0) {
-                docChecklist.hpd = {status: "verified", doc_url: docSearch.byType.hpd[0].url, registry_id: null};
+                const sorted = docSearch.byType.hpd.sort((a, b) => b.confidence - a.confidence);
+                const best = sorted[0];
+                if (best && best.confidence >= autoSelectThreshold) {
+                  docChecklist.hpd = {status: "verified", doc_url: best.url, registry_id: null};
+                }
               }
               if (docSearch.byType.declare.length > 0) {
-                docChecklist.declare = {status: "verified", doc_url: docSearch.byType.declare[0].url, registry_id: null};
+                const sorted = docSearch.byType.declare.sort((a, b) => b.confidence - a.confidence);
+                const best = sorted[0];
+                if (best && best.confidence >= autoSelectThreshold) {
+                  docChecklist.declare = {status: "verified", doc_url: best.url, registry_id: null};
+                }
               }
               if (docSearch.byType.voc.length > 0) {
-                docChecklist.voc = {status: "verified", doc_url: docSearch.byType.voc[0].url, registry_id: null};
+                const sorted = docSearch.byType.voc.sort((a, b) => b.confidence - a.confidence);
+                const best = sorted[0];
+                if (best && best.confidence >= autoSelectThreshold) {
+                  docChecklist.voc = {status: "verified", doc_url: best.url, registry_id: null};
+                }
               }
 
               // Get product URL
               if (docSearch.byType.product_page.length > 0) {
-                verifiedProductUrl = docSearch.byType.product_page[0].url;
+                const validPages = docSearch.byType.product_page
+                  .filter((l) => l.category !== "wrong_manufacturer")
+                  .sort((a, b) => b.confidence - a.confidence);
+                if (validPages.length > 0) {
+                  verifiedProductUrl = validPages[0].url;
+                }
               }
 
+              // Send summary
               const foundDocs: string[] = [];
-              if (docSearch.byType.epd.length > 0) foundDocs.push(`${docSearch.byType.epd.length} EPD`);
-              if (docSearch.byType.hpd.length > 0) foundDocs.push(`${docSearch.byType.hpd.length} HPD`);
-              if (docSearch.byType.declare.length > 0) foundDocs.push(`${docSearch.byType.declare.length} Declare`);
-              if (docSearch.byType.voc.length > 0) foundDocs.push(`${docSearch.byType.voc.length} VOC`);
+              if (docSearch.byType.epd.filter((l) => l.confidence >= autoSelectThreshold).length > 0) {
+                foundDocs.push("EPD");
+              }
+              if (docSearch.byType.hpd.filter((l) => l.confidence >= autoSelectThreshold).length > 0) {
+                foundDocs.push("HPD");
+              }
+              if (docSearch.byType.declare.filter((l) => l.confidence >= autoSelectThreshold).length > 0) {
+                foundDocs.push("Declare");
+              }
+              if (docSearch.byType.voc.filter((l) => l.confidence >= autoSelectThreshold).length > 0) {
+                foundDocs.push("VOC");
+              }
 
               if (foundDocs.length > 0) {
-                sendProgress(`Found: ${foundDocs.join(", ")}`);
+                sendProgress(`Found verified: ${foundDocs.join(", ")}`);
               } else {
-                sendProgress("No documentation links found");
+                sendProgress("No high-confidence documentation found");
               }
             } catch (error) {
               console.error(`[SCAN] Doc search failed for ${rec.product_label}:`, error);
@@ -661,4 +997,3 @@ export const health = functions.https.onRequest((req, res) => {
     res.json({status: "ok", timestamp: new Date().toISOString()});
   });
 });
-
