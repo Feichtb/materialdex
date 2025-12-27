@@ -168,20 +168,5 @@ export function useRevitMaterials() {
   };
 }
 
-// Extend Window interface for TypeScript
-declare global {
-  interface Window {
-    revitBridge?: {
-      isRevitPlugin: boolean;
-      sendToRevit: (data: any) => void;
-      receiveMaterials: (materials: any) => void;
-      receiveTheme: (theme: any) => void;
-      requestTheme: () => void;
-      requestMaterials?: (skip: number, take: number) => void;
-      extractMaterials?: () => void;
-    };
-    onRevitMaterials?: (materials: any) => void;
-    revitMaterialsQueue?: any[];
-  }
-}
+// Window interface is extended in @/types/index.ts
 

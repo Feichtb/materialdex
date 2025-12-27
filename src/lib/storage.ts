@@ -4,21 +4,7 @@ import { defaultMaterials, defaultProjectInfo, defaultSettings } from '@/data/de
 const STORAGE_KEY_PREFIX = 'materialdex_state';
 const CURRENT_PROJECT_KEY = 'materialdex_current_project';
 
-// Extend Window interface for TypeScript
-declare global {
-  interface Window {
-    revitBridge?: {
-      isRevitPlugin: boolean;
-      sendToRevit: (data: any) => void;
-      receiveMaterials: (materials: any) => void;
-      receiveTheme: (theme: any) => void;
-      requestTheme: () => void;
-      requestMaterials?: (skip: number, take: number) => void;
-    };
-    onRevitMaterials?: (materials: any) => void;
-    revitMaterialsQueue?: any[];
-  }
-}
+// Window interface is extended in @/types/index.ts
 
 // Generate unique ID
 export function generateId(): string {

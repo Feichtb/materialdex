@@ -1,14 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ProjectInfo } from '@/types';
-
-interface RevitProjectInfo {
-  name: string;
-  zip: string;
-  address?: string;
-  projectId?: string; // Unique identifier for the Revit project (document path)
-}
+import { ProjectInfo, RevitProjectInfo } from '@/types';
 
 export function useRevitProject() {
   const [projectInfo, setProjectInfo] = useState<RevitProjectInfo | null>(null);
@@ -56,21 +49,5 @@ export function useRevitProject() {
   return projectInfo;
 }
 
-// Extend Window interface for TypeScript
-declare global {
-  interface Window {
-    revitBridge?: {
-      isRevitPlugin: boolean;
-      sendToRevit: (data: any) => void;
-      receiveMaterials: (materials: any) => void;
-      receiveTheme: (theme: any) => void;
-      receiveProjectInfo?: (info: RevitProjectInfo) => void;
-      requestTheme: () => void;
-      requestMaterials?: (skip: number, take: number) => void;
-      requestProjectInfo?: () => void;
-    };
-    onRevitProjectInfo?: (info: RevitProjectInfo) => void;
-    revitProjectInfoQueue?: RevitProjectInfo[];
-  }
-}
+// Window interface is extended in @/types/index.ts
 

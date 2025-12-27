@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { ProductRecommendation, DocType, DocStatus } from '@/types';
-import { DocSearchResult, CategorizedLink } from '@/lib/docSearch';
+import { DocSearchResult, CategorizedLink, LinkConfidence } from '@/lib/docSearch';
 import {
   Building2,
   MapPin,

@@ -144,3 +144,39 @@ export interface MaterialFilters {
 // Export format types
 export type ExportFormat = 'csv' | 'pdf';
 
+// Revit project info from plugin
+export interface RevitProjectInfo {
+  name: string;
+  zip?: string;
+  address?: string;
+  projectId?: string; // Unique identifier for the Revit project (document path)
+  projectPath?: string;
+  projectName?: string;
+  projectNumber?: string;
+  clientName?: string;
+}
+
+// Unified RevitBridge interface - all properties that any module might use
+export interface RevitBridge {
+  isRevitPlugin: boolean;
+  sendToRevit: (data: any) => void;
+  receiveMaterials: (materials: any) => void;
+  receiveTheme: (theme: any) => void;
+  requestTheme: () => void;
+  requestMaterials?: (skip: number, take: number) => void;
+  receiveProjectInfo?: (info: RevitProjectInfo) => void;
+  requestProjectInfo?: () => void;
+  extractMaterials?: () => void;
+}
+
+// Extend Window interface for TypeScript - single source of truth
+declare global {
+  interface Window {
+    revitBridge?: RevitBridge;
+    onRevitMaterials?: (materials: any) => void;
+    revitMaterialsQueue?: any[];
+    onRevitProjectInfo?: (info: RevitProjectInfo) => void;
+    revitProjectInfoQueue?: RevitProjectInfo[];
+  }
+}
+

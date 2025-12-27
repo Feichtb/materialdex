@@ -191,7 +191,7 @@ export function exportToPDF(state: AppState, filename: string = 'materialdex-bin
 
     // Create table data
     const tableData: string[][] = [];
-    for (const { material, products } of byMaterial.values()) {
+    for (const { material, products } of Array.from(byMaterial.values())) {
       for (let i = 0; i < products.length; i++) {
         const product = products[i];
         tableData.push([
