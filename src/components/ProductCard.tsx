@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { ProductRecommendation, DocType, DocStatus } from '@/types';
+import { DocSearchResult, CategorizedLink } from '@/lib/docSearch';
 import {
   Building2,
   MapPin,
@@ -26,48 +27,8 @@ import {
   AlertTriangle,
   Factory,
 } from 'lucide-react';
-import type { IndustryWideDoc } from '@/data/industryWideEpds';
 
-// Confidence level type
-type LinkConfidence = 
-  | 'direct_document'
-  | 'catalog_page'
-  | 'product_line_doc'
-  | 'sustainability_page'
-  | 'news_article'
-  | 'general_page'
-  | 'wrong_manufacturer';
-
-// Categorized link from doc search
-interface CategorizedLink {
-  url: string;
-  title: string;
-  snippet: string;
-  category: 'epd' | 'hpd' | 'declare' | 'voc' | 'product_page' | 'manufacturer' | 'wrong_manufacturer' | 'unknown';
-  confidence: number;
-  confidenceLevel: LinkConfidence;
-  reason: string;
-  needsVerification?: boolean;
-}
-
-interface DocSearchResult {
-  product: string;
-  manufacturer: string | null;
-  searchQuery: string;
-  rawResults: Array<{ url: string; title: string; snippet: string }>;
-  categorizedLinks: CategorizedLink[];
-  byType: {
-    epd: CategorizedLink[];
-    hpd: CategorizedLink[];
-    declare: CategorizedLink[];
-    voc: CategorizedLink[];
-    product_page: CategorizedLink[];
-    other: CategorizedLink[];
-  };
-  industryWideEpds?: IndustryWideDoc[];
-}
-
-interface ExtendedProductRecommendation extends ProductRecommendation {
+interface ExtendedProductRecommendation extends Omit<ProductRecommendation, 'doc_search'> {
   doc_search?: DocSearchResult;
   has_known_epd?: boolean;
   has_known_hpd?: boolean;
