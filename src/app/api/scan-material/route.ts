@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOpenAIClient, getPerplexityClient, PRODUCT_SEARCH_PROMPT, buildProductSearchPrompt } from '@/lib/openai';
 import { searchForDocumentation, DocSearchResult } from '@/lib/docSearch';
-import { ProductRecommendation, DocStatus } from '@/types';
+import { ProductRecommendation, DocStatus, DocChecklist } from '@/types';
 
 interface SingleScanRequest {
   material: {
@@ -215,7 +215,7 @@ async function streamScanProgress(body: SingleScanRequest) {
           }
           
           // Initialize doc checklist
-          const docChecklist: Record<string, DocStatus> = {
+          const docChecklist: DocChecklist = {
             epd: { status: 'unverified', doc_url: null, registry_id: null },
             hpd: { status: 'unverified', doc_url: null, registry_id: null },
             declare: { status: 'unverified', doc_url: null, registry_id: null },
@@ -355,7 +355,7 @@ async function streamScanProgress(body: SingleScanRequest) {
             product_url: verifiedProductUrl || rec.product_url || null,
             image_url: null,
             rationale: rec.rationale || '',
-            doc_checklist: docChecklist as ProductRecommendation['doc_checklist'],
+            doc_checklist: docChecklist,
             distance_miles: null,
             confidence: rec.confidence || 0.5,
             doc_search: docSearch,

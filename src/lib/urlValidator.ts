@@ -314,3 +314,80 @@ export async function batchValidateUrls(
 
   return results;
 }
+
+/**
+ * Extract domain from URL
+ */
+export function extractDomain(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Quick validation of URL format and basic checks
+ */
+export function quickValidateUrl(url: string, docType: 'epd' | 'hpd' | 'declare' | 'voc'): { isValid: boolean; reason?: string } {
+  try {
+    const urlObj = new URL(url);
+    
+    // Check for obviously invalid domains
+    const invalidDomains = ['example.com', 'test.com', 'localhost'];
+    if (invalidDomains.includes(urlObj.hostname.toLowerCase())) {
+      return { isValid: false, reason: 'Invalid domain' };
+    }
+    
+    // Check for junk patterns
+    const junkPatterns = [
+      /^https?:\/\/[^/]+\/?$/i, // Just domain, no path
+      /\/search\?/i,
+      /\/404/i,
+      /error/i,
+    ];
+    
+    for (const pattern of junkPatterns) {
+      if (pattern.test(url)) {
+        return { isValid: false, reason: 'Invalid URL pattern' };
+      }
+    }
+    
+    return { isValid: true };
+  } catch {
+    return { isValid: false, reason: 'Invalid URL format' };
+  }
+}
+
+/**
+ * Evidence patterns for different document types
+ */
+export const EVIDENCE_PATTERNS: Record<'epd' | 'hpd' | 'declare' | 'voc', RegExp[]> = {
+  epd: [
+    /environmental\s+product\s+declaration/i,
+    /EPD[-\s]?(?:IES[-\s])?\d+/i,
+    /S-P-\d+/i,
+    /ISO\s+14025/i,
+    /EN\s+15804/i,
+  ],
+  hpd: [
+    /health\s+product\s+declaration/i,
+    /HPD\s+(?:ID|number|#)?:?\s*\d+/i,
+    /hpd\s+collaborative/i,
+  ],
+  declare: [
+    /declare\s+label/i,
+    /living\s+building\s+challenge/i,
+    /red\s+list/i,
+    /declare\s+program/i,
+  ],
+  voc: [
+    /volatile\s+organic\s+compound/i,
+    /VOC/i,
+    /greenguard/i,
+    /floorscore/i,
+    /indoor\s+air\s+quality/i,
+    /IAQ/i,
+  ],
+};

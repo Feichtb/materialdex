@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOpenAIClient, getPerplexityClient, PRODUCT_SEARCH_PROMPT, buildProductSearchPrompt } from '@/lib/openai';
 import { searchForDocumentation, DocSearchResult } from '@/lib/docSearch';
-import { ScanRequest, ScanResponse, ProductRecommendation, DocStatus } from '@/types';
+import { ScanRequest, ScanResponse, ProductRecommendation, DocStatus, DocChecklist } from '@/types';
 
 // Extended recommendation with search results for debugging
 interface ExtendedRecommendation extends ProductRecommendation {
@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
             await delay(500); // 500ms delay between searches
           }
           
-          const docChecklist: Record<string, DocStatus> = {
+          const docChecklist: DocChecklist = {
             epd: { status: 'unverified', doc_url: null, registry_id: null },
             hpd: { status: 'unverified', doc_url: null, registry_id: null },
             declare: { status: 'unverified', doc_url: null, registry_id: null },
@@ -256,7 +256,7 @@ export async function POST(request: NextRequest) {
             product_url: verifiedProductUrl || rec.product_url || null, // Prefer verified URL
             image_url: null,
             rationale: rec.rationale || '',
-            doc_checklist: docChecklist as ProductRecommendation['doc_checklist'],
+            doc_checklist: docChecklist,
             distance_miles: null,
             confidence: rec.confidence || 0.5,
             doc_search: docSearch,
