@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -6,6 +7,7 @@ using System.Windows.Media.Imaging;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using Autodesk.Revit.UI.Events;
 
 namespace Materialdex
 {
@@ -19,6 +21,7 @@ namespace Materialdex
         public static MaterialdexDockablePane? DockablePane { get; private set; }
         public static DockablePaneId DockablePaneId => new DockablePaneId(new Guid("B8E5C9A2-3B7D-4E6F-8A1C-9D2E3F4B5C6B"));
         internal static UIApplication? _uiApplication;
+        private static bool _idlingHandlerRegistered = false;
         
         public Result OnStartup(UIControlledApplication application)
         {
@@ -66,6 +69,12 @@ namespace Materialdex
                 // Register the dockable pane
                 RegisterDockablePane(application);
 
+                // Register Idling event to capture UIApplication
+                // This is needed because the panel might auto-show from a previous session
+                // before the user clicks the button
+                application.Idling += OnIdling;
+                _idlingHandlerRegistered = true;
+
                 return Result.Succeeded;
             }
             catch (Exception ex)
@@ -75,8 +84,29 @@ namespace Materialdex
             }
         }
 
+        /// <summary>
+        /// Idling event handler to capture UIApplication.
+        /// This ensures we have access to the active document even if the panel auto-shows.
+        /// </summary>
+        private void OnIdling(object? sender, IdlingEventArgs e)
+        {
+            // Capture UIApplication on first idle
+            if (_uiApplication == null && sender is UIApplication uiApp)
+            {
+                _uiApplication = uiApp;
+                Debug.WriteLine("Materialdex: Captured UIApplication via Idling event");
+            }
+        }
+
         public Result OnShutdown(UIControlledApplication application)
         {
+            // Unregister Idling event
+            if (_idlingHandlerRegistered)
+            {
+                application.Idling -= OnIdling;
+                _idlingHandlerRegistered = false;
+            }
+            
             // Cleanup if needed
             DockablePane?.Dispose();
             return Result.Succeeded;

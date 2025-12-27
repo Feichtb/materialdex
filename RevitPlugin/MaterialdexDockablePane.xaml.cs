@@ -556,6 +556,8 @@ namespace Materialdex
                         else if (type == "requestMaterials")
                         {
                             Debug.WriteLine("Materials requested from web");
+                            Debug.WriteLine($"App._uiApplication is null: {App._uiApplication == null}");
+                            Debug.WriteLine($"_cachedMaterials count: {_cachedMaterials?.Count ?? 0}");
                             
                             // If no cached materials, try to extract from active document
                             if (_cachedMaterials == null || _cachedMaterials.Count == 0)
@@ -565,22 +567,38 @@ namespace Materialdex
                                 {
                                     try
                                     {
-                                        Document doc = App._uiApplication.ActiveUIDocument.Document;
-                                        _lastDocument = doc;
-                                        _cachedMaterials = MaterialExtractor.ExtractMaterials(doc);
-                                        UpdateStatus($"Extracted {_cachedMaterials.Count} materials from model");
+                                        var activeUIDoc = App._uiApplication.ActiveUIDocument;
+                                        Debug.WriteLine($"ActiveUIDocument is null: {activeUIDoc == null}");
                                         
-                                        // Also send project info when document is set
-                                        SendProjectInfoToWebView();
+                                        if (activeUIDoc != null)
+                                        {
+                                            Document doc = activeUIDoc.Document;
+                                            Debug.WriteLine($"Document title: {doc?.Title ?? "null"}");
+                                            
+                                            _lastDocument = doc;
+                                            _cachedMaterials = MaterialExtractor.ExtractMaterials(doc);
+                                            Debug.WriteLine($"Extracted {_cachedMaterials.Count} materials");
+                                            UpdateStatus($"Extracted {_cachedMaterials.Count} materials from model");
+                                            
+                                            // Also send project info when document is set
+                                            SendProjectInfoToWebView();
+                                        }
+                                        else
+                                        {
+                                            Debug.WriteLine("No active document - cannot extract materials");
+                                            UpdateStatus("Please open a Revit document first.");
+                                        }
                                     }
                                     catch (Exception ex)
                                     {
                                         UpdateStatus($"Error extracting materials: {ex.Message}");
                                         Debug.WriteLine($"Error extracting materials: {ex.Message}");
+                                        Debug.WriteLine($"Stack trace: {ex.StackTrace}");
                                     }
                                 }
                                 else
                                 {
+                                    Debug.WriteLine("App._uiApplication is null - cannot extract materials");
                                     // Fallback: try to extract via App method
                                     ExtractAndCacheMaterials();
                                 }
