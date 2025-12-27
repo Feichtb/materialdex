@@ -108,7 +108,14 @@ export default function MinimalLayout({
     setScanProgress(['Starting scan...']);
     
     try {
-      const response = await fetch('/api/scan-material', {
+      // Use Firebase Functions for scanning (longer timeout, no 30s limit)
+      // Falls back to local API in development if NEXT_PUBLIC_FIREBASE_FUNCTIONS_URL is not set
+      const firebaseUrl = process.env.NEXT_PUBLIC_FIREBASE_FUNCTIONS_URL;
+      const scanUrl = firebaseUrl 
+        ? `${firebaseUrl}/scanMaterial`
+        : '/api/scan-material';
+      
+      const response = await fetch(scanUrl, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Build output
+lib/
+
+# Local config
+*.local
+
+# Firebase
+firebase-debug.log
+firebase-debug.*.log
+
+# Environment
+.env
+.env.local
+

@@ -18,6 +18,14 @@ This document describes all environment variables used by the application.
 
 ## Optional Variables
 
+### `NEXT_PUBLIC_FIREBASE_FUNCTIONS_URL`
+- **Description**: Base URL for Firebase Cloud Functions (for longer-running scans)
+- **Required**: Yes for production (Firebase handles long scans without timeouts)
+- **Format**: `https://us-central1-YOUR_PROJECT_ID.cloudfunctions.net`
+- **Example**: `https://us-central1-materialdex-677c3.cloudfunctions.net`
+- **Usage**: Frontend uses this to call Firebase functions instead of Netlify functions
+- **Note**: If not set, falls back to local `/api/scan-material` endpoint
+
 ### `API_SECRET_KEY`
 - **Description**: Secret key to protect expensive API endpoints from unauthorized use
 - **Required**: No (but recommended for production)
