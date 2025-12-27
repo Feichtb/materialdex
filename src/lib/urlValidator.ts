@@ -316,6 +316,213 @@ export async function batchValidateUrls(
 }
 
 /**
+ * Combined URL validation result
+ */
+export interface CombinedValidationResult {
+  valid: boolean;
+  usable: boolean;
+  manufacturerMatch: boolean;
+  reason: string;
+  is404?: boolean;
+  content?: string; // Cached content for further analysis
+}
+
+/**
+ * COMBINED validator - validates URL usability AND manufacturer in ONE fetch
+ * This is much more efficient than calling validateUrlIsUsable and validateManufacturerInPage separately
+ */
+export async function validateUrlComplete(
+  url: string,
+  manufacturer: string | null
+): Promise<CombinedValidationResult> {
+  debugLog(`Combined validation: ${url} (manufacturer: ${manufacturer || 'none'})`);
+  
+  // First check: is it a generic homepage?
+  if (isGenericHomepageOrEmpty(url)) {
+    debugLog(`  → INVALID: Generic homepage or empty page`);
+    return { 
+      valid: false, 
+      usable: false, 
+      manufacturerMatch: false, 
+      reason: 'Generic homepage or empty search page' 
+    };
+  }
+  
+  // Check if manufacturer is in URL (quick win - no fetch needed)
+  if (manufacturer) {
+    const urlLower = url.toLowerCase();
+    const mfgKeywords = getManufacturerKeywords(manufacturer);
+    const urlContainsMfg = mfgKeywords.some(keyword => urlLower.includes(keyword));
+    
+    if (urlContainsMfg) {
+      debugLog(`  Manufacturer found in URL - still need to verify URL is usable`);
+    }
+  }
+  
+  // Check if it's a PDF
+  const isPdf = url.toLowerCase().endsWith('.pdf') || url.toLowerCase().includes('.pdf?');
+  
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000); // 8 second timeout per URL
+
+    debugLog(`  Fetching URL...`);
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; Materialdex/1.0)',
+        'Accept': isPdf ? 'application/pdf,*/*' : 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+    });
+
+    clearTimeout(timeout);
+
+    // Check for 404 or other client errors
+    if (response.status === 404) {
+      debugLog(`  → INVALID: 404 Not Found`);
+      return { 
+        valid: false, 
+        usable: false, 
+        manufacturerMatch: false, 
+        reason: '404 Not Found', 
+        is404: true 
+      };
+    }
+    
+    if (response.status >= 400 && response.status < 500) {
+      debugLog(`  → INVALID: HTTP ${response.status}`);
+      return { 
+        valid: false, 
+        usable: false, 
+        manufacturerMatch: false, 
+        reason: `HTTP ${response.status}` 
+      };
+    }
+
+    // For PDFs, be lenient - text extraction is unreliable
+    if (isPdf) {
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('pdf')) {
+        debugLog(`  → VALID: PDF file - assuming valid`);
+        return { 
+          valid: true, 
+          usable: true, 
+          manufacturerMatch: true, // Assume valid for PDFs
+          reason: 'PDF file - text extraction unreliable, assuming valid' 
+        };
+      }
+    }
+
+    // Get page content
+    const content = await response.text();
+    debugLog(`  Fetched ${content.length} bytes`);
+    
+    // Check if page has meaningful content
+    if (content.length < 500) {
+      debugLog(`  → INVALID: Page too short (${content.length} bytes)`);
+      return { 
+        valid: false, 
+        usable: false, 
+        manufacturerMatch: false, 
+        reason: 'Page content too short' 
+      };
+    }
+    
+    // Check for common error page indicators
+    const contentLower = content.toLowerCase();
+    const errorIndicators = [
+      'page not found',
+      '404',
+      'not found',
+      'error 404',
+      'this page does not exist',
+      'no results found',
+      'your search did not match',
+      'no documents found',
+    ];
+    
+    const errorTextCount = errorIndicators.filter(indicator => contentLower.includes(indicator)).length;
+    if (errorTextCount >= 2 && content.length < 2000) {
+      debugLog(`  → INVALID: Appears to be error page`);
+      return { 
+        valid: false, 
+        usable: false, 
+        manufacturerMatch: false, 
+        reason: 'Appears to be error/empty page' 
+      };
+    }
+    
+    // URL is usable! Now check manufacturer if provided
+    let manufacturerMatch = true;
+    let manufacturerReason = 'No manufacturer to verify';
+    
+    if (manufacturer && manufacturer.trim().length > 0) {
+      const cleanedMfg = cleanManufacturerName(manufacturer).toLowerCase();
+      const mfgKeywords = getManufacturerKeywords(manufacturer);
+      
+      // Check if manufacturer name appears in content
+      if (contentLower.includes(cleanedMfg)) {
+        debugLog(`  → Manufacturer "${cleanedMfg}" found in page content`);
+        manufacturerMatch = true;
+        manufacturerReason = `Found "${cleanedMfg}" in page content`;
+      } else {
+        // Check individual keywords
+        const foundKeywords = mfgKeywords.filter(keyword => contentLower.includes(keyword));
+        
+        debugLog(`  Manufacturer keywords: ${mfgKeywords.join(', ')}`);
+        debugLog(`  Found keywords: ${foundKeywords.join(', ')} (${foundKeywords.length}/${mfgKeywords.length})`);
+        
+        if (foundKeywords.length > 0 && mfgKeywords.length > 0) {
+          const matchRatio = foundKeywords.length / mfgKeywords.length;
+          if (matchRatio >= 0.33) {
+            manufacturerMatch = true;
+            manufacturerReason = `Found ${foundKeywords.length}/${mfgKeywords.length} manufacturer keywords`;
+          } else {
+            manufacturerMatch = false;
+            manufacturerReason = `Manufacturer "${manufacturer}" not found in page content`;
+          }
+        } else {
+          manufacturerMatch = false;
+          manufacturerReason = `Manufacturer "${manufacturer}" not found in page content`;
+        }
+      }
+    }
+    
+    debugLog(`  → ${manufacturerMatch ? 'VALID' : 'INVALID (wrong manufacturer)'}: ${manufacturerReason}`);
+    
+    return { 
+      valid: manufacturerMatch, 
+      usable: true, 
+      manufacturerMatch, 
+      reason: manufacturerReason,
+      content // Return content for potential further use
+    };
+    
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    
+    if (error instanceof Error && error.name === 'AbortError') {
+      debugLog(`  → INVALID: Timeout`);
+      return { 
+        valid: false, 
+        usable: false, 
+        manufacturerMatch: false, 
+        reason: 'Request timed out' 
+      };
+    }
+    
+    debugLog(`  → ERROR: ${errorMsg} - giving benefit of doubt`);
+    // On network errors, be lenient
+    return { 
+      valid: true, 
+      usable: true, 
+      manufacturerMatch: true, 
+      reason: `Could not verify (${errorMsg}) - assuming valid` 
+    };
+  }
+}
+
+/**
  * Extract domain from URL
  */
 export function extractDomain(url: string): string {

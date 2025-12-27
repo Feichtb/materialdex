@@ -128,6 +128,20 @@ async function streamScanProgress(body: SingleScanRequest) {
         }
       };
 
+      // Keep reference to keepalive interval for cleanup
+      let keepaliveInterval: NodeJS.Timeout | null = null;
+      
+      const cleanupAndClose = () => {
+        if (keepaliveInterval) {
+          clearInterval(keepaliveInterval);
+          keepaliveInterval = null;
+        }
+        streamClosed = true;
+        try {
+          controller.close();
+        } catch {}
+      };
+      
       const sendComplete = (data: any) => {
         if (streamClosed) {
           console.warn('[scan-material] Attempted to send complete after stream closed');
@@ -136,13 +150,10 @@ async function streamScanProgress(body: SingleScanRequest) {
         try {
           const update: ProgressUpdate = { type: 'complete', message: 'Scan complete', data };
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(update)}\n\n`));
-          streamClosed = true;
-          controller.close();
+          cleanupAndClose();
         } catch (err) {
           console.error('[scan-material] Error sending complete:', err);
-          try {
-            controller.close();
-          } catch {}
+          cleanupAndClose();
         }
       };
 
@@ -154,15 +165,29 @@ async function streamScanProgress(body: SingleScanRequest) {
         try {
           const update: ProgressUpdate = { type: 'error', message: error };
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(update)}\n\n`));
-          streamClosed = true;
-          controller.close();
+          cleanupAndClose();
         } catch (err) {
           console.error('[scan-material] Error sending error message:', err);
-          try {
-            controller.close();
-          } catch {}
+          cleanupAndClose();
         }
       };
+
+      // Set up keepalive interval to prevent Netlify timeout
+      // Send a SSE comment every 8 seconds to keep the connection alive
+      keepaliveInterval = setInterval(() => {
+        try {
+          if (!streamClosed) {
+            controller.enqueue(encoder.encode(`: keepalive\n\n`));
+            console.log('[scan-material] Sent keepalive');
+          }
+        } catch {
+          // Stream closed, stop keepalive
+          if (keepaliveInterval) {
+            clearInterval(keepaliveInterval);
+            keepaliveInterval = null;
+          }
+        }
+      }, 8000);
 
       try {
         const model = body.settings?.model || 'sonar-pro';

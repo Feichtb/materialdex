@@ -5,6 +5,17 @@
 [build.environment]
   NODE_VERSION = "20"
 
+# Function configuration - extend timeout for AI/scan operations
+[functions]
+  # Extend function timeout to maximum allowed (26 seconds for Pro, 10 for free)
+  # Note: For longer operations, we use streaming which keeps connection alive
+  node_bundler = "esbuild"
+  
+  # For scan-material specifically, use extended timeout
+  [functions."scan-material"]
+    # Background functions allow up to 15 minutes
+    # Streaming functions stay alive as long as they're sending data
+
 # Next.js configuration for Netlify
 [[plugins]]
   package = "@netlify/plugin-nextjs"

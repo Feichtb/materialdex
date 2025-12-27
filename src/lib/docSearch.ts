@@ -10,10 +10,13 @@
 
 import OpenAI from 'openai';
 import { findIndustryWideEpds, IndustryWideDoc } from '@/data/industryWideEpds';
-import { validateManufacturerInPage, validateUrlIsUsable } from './urlValidator';
+import { validateUrlComplete, CombinedValidationResult } from './urlValidator';
 
 // Debug flag - set to true to see search logs
 const DEBUG = true;
+
+// URL validation is always enabled for quality results
+// We use combined validation (one fetch instead of two) to be efficient
 
 function debugLog(...args: unknown[]) {
   if (DEBUG) {
@@ -147,6 +150,8 @@ export async function searchForDocumentationWithProgress(
   perplexityApiKey: string,
   onProgress?: (message: string) => void
 ): Promise<DocSearchResult> {
+  debugLog(`Starting doc search for: ${productName} (manufacturer: ${manufacturer || 'not specified'})`);
+  
   const searchTerms = manufacturer 
     ? `${manufacturer} ${productName}`
     : productName;
@@ -193,11 +198,12 @@ export async function searchForDocumentationWithProgress(
       }
     ];
 
-    // Run searches in parallel
+    // Run searches in parallel with timeout
     const searchPromises = searchQueries.map(async ({ name, query, sites }) => {
       try {
         debugLog(`\nSearching for ${name}...`);
         onProgress?.(`Searching ${name} pages...`);
+        
         const searchResponse = await client.chat.completions.create({
           model: 'sonar',
           messages: [
@@ -293,47 +299,10 @@ Return SPECIFIC document pages (NOT homepages, NOT category pages).`,
       debugLog(`  ${i + 1}. ${r.title} - ${r.url}`);
     });
 
-    // Step 1.5: Validate URLs are actually usable (not 404, not homepage, has content)
-    debugLog(`\nStep 1.5: Validating URLs are usable (not 404, not homepage)...`);
-    onProgress?.(`Validating ${rawResults.length} URLs...`);
-    let validatedCount = 0;
-    const urlValidationResults = await Promise.all(
-      rawResults.map(async (result, index) => {
-        try {
-          const urlObj = new URL(result.url);
-          const hostname = urlObj.hostname.replace('www.', '');
-          if (index % 3 === 0 || index === rawResults.length - 1) {
-            // Update progress every 3 URLs or on last one
-            onProgress?.(`Verifying URLs... (${index + 1}/${rawResults.length})`);
-          }
-          const validation = await validateUrlIsUsable(result.url);
-          if (validation.valid) validatedCount++;
-          return { result, valid: validation.valid, reason: validation.reason };
-        } catch (e) {
-          debugLog(`  Validation error for ${result.url}: ${e}`);
-          return { result, valid: false, reason: `Validation error: ${e}` };
-        }
-      })
-    );
-    
-    onProgress?.(`Validated: ${validatedCount} of ${rawResults.length} URLs are usable`);
-
-    debugLog(`URL validation results:`);
-    urlValidationResults.forEach(({ result, valid, reason }) => {
-      debugLog(`  ${valid ? '✓' : '✗'} ${result.url} - ${reason}`);
-    });
-
-    // Filter to only valid URLs
-    const validResults = urlValidationResults
-      .filter(({ valid }) => valid)
-      .map(({ result }) => result);
-    
-    debugLog(`\nFiltered: ${rawResults.length} → ${validResults.length} usable URLs`);
-    rawResults = validResults;
-
     // Step 2: Categorize each link with confidence levels
     debugLog(`\nStep 2: Categorizing ${rawResults.length} links...`);
     onProgress?.(`Categorizing ${rawResults.length} links by document type...`);
+    
     let categorizedLinks = await categorizeLinks(
       rawResults,
       productName,
@@ -361,60 +330,67 @@ Return SPECIFIC document pages (NOT homepages, NOT category pages).`,
       onProgress?.(`Categorized: ${categorySummary}`);
     }
 
-    // Step 3: Validate top candidates by fetching URL content and checking for manufacturer name
-    // Skip registry URLs (EPD/HPD/Declare pages) - they may not contain manufacturer name in HTML
-    debugLog(`\nStep 3: URL content validation for manufacturer "${manufacturer}"`);
-    if (manufacturer) {
-      // Filter out registry URLs and already-rejected links
-      const linksToValidate = categorizedLinks
-        .filter(l => l.category !== 'wrong_manufacturer' && l.category !== 'unknown')
-        .filter(l => {
-          const urlLower = l.url.toLowerCase();
-          // Skip validation for official registry URLs
-          const isRegistry = 
-            urlLower.includes('environdec.com') ||
-            urlLower.includes('hpdrepository') ||
-            urlLower.includes('declare.living-future.org') ||
-            urlLower.includes('spot.ul.com');
-          if (isRegistry) {
-            debugLog(`  Skipping registry URL (trusted source): ${l.url}`);
+    // Step 3: COMBINED validation - validates URL usability AND manufacturer in ONE fetch
+    // This validates ALL URLs including registry URLs (they can also be wrong/fabricated)
+    debugLog(`\nStep 3: Combined URL validation (usability + manufacturer)`);
+    
+    // Filter out already-rejected links
+    const linksToValidate = categorizedLinks
+      .filter(l => l.category !== 'wrong_manufacturer' && l.category !== 'unknown');
+    
+    debugLog(`Validating ${linksToValidate.length} links...`);
+    onProgress?.(`Validating ${linksToValidate.length} URLs...`);
+    
+    // Validate in parallel - ONE fetch per URL validates both usability and manufacturer
+    const validationResults = await Promise.all(
+      linksToValidate.map(async (link, index) => {
+        try {
+          if (index % 2 === 0 || index === linksToValidate.length - 1) {
+            onProgress?.(`Validating URLs... (${index + 1}/${linksToValidate.length})`);
           }
-          return !isRegistry;
-        })
-        .slice(0, 6); // Validate top 6 non-registry links
-      
-      debugLog(`Validating ${linksToValidate.length} non-registry links...`);
-      onProgress?.(`Verifying manufacturer match for ${linksToValidate.length} links...`);
-      
-      // Validate in parallel
-      const validationResults = await Promise.all(
-        linksToValidate.map(async (link, index) => {
-          try {
-            if (index % 2 === 0 || index === linksToValidate.length - 1) {
-              onProgress?.(`Checking manufacturer match... (${index + 1}/${linksToValidate.length})`);
-            }
-            const result = await validateManufacturerInPage(link.url, manufacturer);
-            return { url: link.url, valid: result.valid, reason: result.reason };
-          } catch (e) {
-            debugLog(`  Validation error for ${link.url}: ${e}`);
-            return { url: link.url, valid: true, reason: 'Validation error - assuming valid' };
-          }
-        })
-      );
+          const result = await validateUrlComplete(link.url, manufacturer);
+          return { url: link.url, result };
+        } catch (e) {
+          debugLog(`  Validation error for ${link.url}: ${e}`);
+          return { 
+            url: link.url, 
+            result: { 
+              valid: true, 
+              usable: true, 
+              manufacturerMatch: true, 
+              reason: 'Validation error - assuming valid' 
+            } as CombinedValidationResult
+          };
+        }
+      })
+    );
 
-      debugLog(`Validation results:`);
-      validationResults.forEach(r => {
-        debugLog(`  ${r.valid ? '✓' : '✗'} ${r.url} - ${r.reason}`);
-      });
+    debugLog(`Validation results:`);
+    validationResults.forEach(({ url, result }) => {
+      debugLog(`  ${result.valid ? '✓' : '✗'} ${url}`);
+      debugLog(`    Usable: ${result.usable}, Manufacturer: ${result.manufacturerMatch}`);
+      debugLog(`    Reason: ${result.reason}`);
+    });
 
-      // Update links based on validation
-      const validationMap = new Map(validationResults.map(r => [r.url, r]));
-      
-      const beforeCount = categorizedLinks.filter(l => l.category !== 'wrong_manufacturer').length;
-      
-      categorizedLinks = categorizedLinks.map(link => {
-        const validation = validationMap.get(link.url);
-        if (validation && !validation.valid) {
+    // Update links based on validation
+    const validationMap = new Map(validationResults.map(r => [r.url, r.result]));
+    
+    const beforeCount = categorizedLinks.filter(l => l.category !== 'wrong_manufacturer').length;
+    
+    categorizedLinks = categorizedLinks.map(link => {
+      const validation = validationMap.get(link.url);
+      if (validation) {
+        if (!validation.usable) {
+          // URL is not usable (404, empty page, etc.)
+          return {
+            ...link,
+            category: 'unknown' as const,
+            confidenceLevel: 'general_page' as const,
+            confidence: 0,
+            reason: `REJECTED (not usable): ${validation.reason}`,
+          };
+        } else if (!validation.manufacturerMatch) {
+          // URL is usable but wrong manufacturer
           return {
             ...link,
             category: 'wrong_manufacturer' as const,
@@ -423,16 +399,21 @@ Return SPECIFIC document pages (NOT homepages, NOT category pages).`,
             reason: `REJECTED: ${validation.reason}`,
           };
         }
-        return link;
-      });
-      
-      const afterCount = categorizedLinks.filter(l => l.category !== 'wrong_manufacturer').length;
-      debugLog(`Links: ${beforeCount} before validation → ${afterCount} after validation`);
-      if (beforeCount !== afterCount) {
-        onProgress?.(`Removed ${beforeCount - afterCount} link${beforeCount - afterCount > 1 ? 's' : ''} with wrong manufacturer`);
       }
+      return link;
+    });
+    
+    // Filter out invalid links
+    categorizedLinks = categorizedLinks.filter(l => l.category !== 'unknown' || !validationMap.has(l.url));
+    
+    const afterCount = categorizedLinks.filter(l => l.category !== 'wrong_manufacturer').length;
+    debugLog(`Links: ${beforeCount} before validation → ${afterCount} after validation`);
+    
+    const removedCount = beforeCount - afterCount;
+    if (removedCount > 0) {
+      onProgress?.(`Removed ${removedCount} invalid/wrong manufacturer link${removedCount > 1 ? 's' : ''}`);
     } else {
-      debugLog(`No manufacturer specified - skipping URL validation`);
+      onProgress?.(`All ${afterCount} links validated successfully`);
     }
 
     // Sort by confidence within each category
