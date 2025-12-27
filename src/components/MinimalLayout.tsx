@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { InputMaterial, ScannedMaterial, ProductRecommendation, DocType, AppSettings, Project } from '@/types';
+import { InputMaterial, ScannedMaterial, ProductRecommendation, DocType, AppSettings, ProjectInfo } from '@/types';
 import { DocSearchResult, CategorizedLink } from '@/lib/docSearch';
 import {
   ChevronDown,
@@ -27,7 +27,7 @@ interface ExtendedProduct extends ProductRecommendation {
 interface MinimalLayoutProps {
   materials: InputMaterial[];
   scannedMaterials: ScannedMaterial[];
-  project: Project;
+  project: ProjectInfo;
   settings: AppSettings;
   onMaterialChange: (id: string, updates: Partial<InputMaterial>) => void;
   onSingleScanComplete: (result: ScannedMaterial) => void;
