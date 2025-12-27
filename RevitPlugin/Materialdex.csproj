@@ -1,0 +1,70 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>Materialdex</AssemblyName>
+    <RootNamespace>Materialdex</RootNamespace>
+    <Version>1.0.0</Version>
+    <Authors>Materialdex</Authors>
+    <Description>Sustainable Materials Suggestor for Revit 2026</Description>
+    
+    <!-- Output to a folder we can easily copy to Revit addins -->
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    
+    <!-- Don't copy Revit assemblies to output (they're loaded by Revit) -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <!-- Revit 2026 API References -->
+  <ItemGroup>
+    <Reference Include="RevitAPI">
+      <HintPath>$(ProgramFiles)\Autodesk\Revit 2026\RevitAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>$(ProgramFiles)\Autodesk\Revit 2026\RevitAPIUI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AdWindows">
+      <HintPath>$(ProgramFiles)\Autodesk\Revit 2026\AdWindows.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- WebView2 for hosting the web app -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2739.15" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <!-- Icon resources - copied to output directory for file-based loading -->
+  <ItemGroup>
+    <None Include="Resources\materialdex-32.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Resources\materialdex-16.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Post-build: Copy to Revit Addins folder -->
+  <!-- Temporarily disabled - uncomment to enable auto-install on build -->
+  <!-- <Target Name="CopyToRevitAddins" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+    <PropertyGroup>
+      <RevitAddinsFolder>$(AppData)\Autodesk\Revit\Addins\2026</RevitAddinsFolder>
+    </PropertyGroup>
+    <ItemGroup>
+      <FilesToCopy Include="$(OutputPath)**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(FilesToCopy)" DestinationFolder="$(RevitAddinsFolder)\Materialdex\%(RecursiveDir)" />
+    <Copy SourceFiles="Materialdex.addin" DestinationFolder="$(RevitAddinsFolder)" />
+  </Target> -->
+
+</Project>
+

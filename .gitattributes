@@ -1,0 +1,8 @@
+# Ensure line endings are consistent
+* text=auto
+
+# Exclude large binary files from git LFS (if you were using it)
+*.rvt binary
+*.dll binary
+*.pdb binary
+

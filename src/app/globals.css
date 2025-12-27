@@ -1,0 +1,393 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --revit-primary: #0078d4;
+  --revit-secondary: #3E8E2A;
+  --revit-dark: #1e1e1e;
+  --revit-darker: #1e1e1e;
+  --revit-panel: #252526;
+  --revit-border: #3e3e42;
+  --revit-text: #cccccc;
+  --revit-accent: #569cd6;
+  --revit-success: #4ec9b0;
+  --revit-warning: #dcdcaa;
+  --revit-error: #f48771;
+}
+
+/* Light theme variables */
+[data-theme="light"] {
+  --revit-primary: #0078d4;
+  --revit-secondary: #3E8E2A;
+  --revit-dark: #f3f3f3;
+  --revit-darker: #ffffff;
+  --revit-panel: #ffffff;
+  --revit-border: #e1e1e1;
+  --revit-text: #323130;
+  --revit-accent: #0078d4;
+  --revit-success: #4ec9b0; /* Keep accent color */
+  --revit-warning: #ffaa44;
+  --revit-error: #d13438;
+}
+
+/* Override Tailwind classes for light theme */
+[data-theme="light"] .bg-revit-darker {
+  background-color: var(--revit-darker) !important;
+}
+
+[data-theme="light"] .bg-revit-dark {
+  background-color: var(--revit-dark) !important;
+}
+
+[data-theme="light"] .bg-revit-panel {
+  background-color: var(--revit-panel) !important;
+}
+
+[data-theme="light"] .bg-revit-border {
+  background-color: var(--revit-border) !important;
+}
+
+[data-theme="light"] .bg-revit-success {
+  background-color: var(--revit-success) !important;
+}
+
+/* Text color overrides for light theme */
+/* Base text color - this should catch .text-revit-text */
+[data-theme="light"] .text-revit-text {
+  color: var(--revit-text) !important;
+  --tw-text-opacity: 1;
+}
+
+/* Universal override for all text-revit-text variations */
+/* This catches classes like text-revit-text/70, text-revit-text/60, etc. */
+[data-theme="light"] [class*="text-revit-text"] {
+  /* Override Tailwind's opacity variable */
+  --tw-text-opacity: 1;
+}
+
+/* Specific opacity overrides using multiple selector strategies */
+/* Strategy 1: Direct class matching (Tailwind generates .text-revit-text\/70 in CSS) */
+[data-theme="light"] [class*="text-revit-text"][class*="80"]:not([class*="text-revit-text/80"]) {
+  color: rgba(50, 49, 48, 0.8) !important;
+}
+
+[data-theme="light"] [class*="text-revit-text"][class*="70"]:not([class*="text-revit-text/70"]) {
+  color: rgba(50, 49, 48, 0.7) !important;
+}
+
+[data-theme="light"] [class*="text-revit-text"][class*="60"]:not([class*="text-revit-text/60"]) {
+  color: rgba(50, 49, 48, 0.6) !important;
+}
+
+[data-theme="light"] [class*="text-revit-text"][class*="50"]:not([class*="text-revit-text/50"]) {
+  color: rgba(50, 49, 48, 0.5) !important;
+}
+
+[data-theme="light"] [class*="text-revit-text"][class*="40"]:not([class*="text-revit-text/40"]) {
+  color: rgba(50, 49, 48, 0.4) !important;
+}
+
+/* Strategy 2: Match classes containing slash patterns */
+[data-theme="light"] [class*="text-revit-text/"][class*="80"],
+[data-theme="light"] [class*="text-revit-text/"][class*="70"],
+[data-theme="light"] [class*="text-revit-text/"][class*="60"],
+[data-theme="light"] [class*="text-revit-text/"][class*="50"],
+[data-theme="light"] [class*="text-revit-text/"][class*="40"] {
+  opacity: 1 !important;
+}
+
+/* Force color for common patterns - most aggressive approach */
+[data-theme="light"] div[class*="text-revit-text"],
+[data-theme="light"] span[class*="text-revit-text"],
+[data-theme="light"] p[class*="text-revit-text"],
+[data-theme="light"] label[class*="text-revit-text"],
+[data-theme="light"] button[class*="text-revit-text"] {
+  /* Base fallback - will be overridden by more specific rules */
+  color: var(--revit-text) !important;
+}
+
+[data-theme="light"] .text-revit-success {
+  color: var(--revit-success) !important;
+}
+
+[data-theme="light"] .text-revit-primary {
+  color: var(--revit-primary) !important;
+}
+
+[data-theme="light"] .text-revit-error {
+  color: var(--revit-error) !important;
+}
+
+/* Border color overrides */
+[data-theme="light"] .border-revit-border {
+  border-color: var(--revit-border) !important;
+}
+
+[data-theme="light"] .border-revit-success {
+  border-color: var(--revit-success) !important;
+}
+
+[data-theme="light"] .border-revit-primary {
+  border-color: var(--revit-primary) !important;
+}
+
+/* Icon colors - ensure they're visible in light mode */
+[data-theme="light"] svg {
+  color: inherit;
+}
+
+/* Override icon colors that use text-revit-text */
+[data-theme="light"] svg[class*="text-revit-text"] {
+  color: inherit !important;
+}
+
+[data-theme="light"] [class*="text-revit-text"][class*="/60"] svg,
+[data-theme="light"] svg[class*="text-revit-text"][class*="/60"] {
+  color: rgba(50, 49, 48, 0.6) !important;
+}
+
+[data-theme="light"] [class*="text-revit-text"][class*="/50"] svg,
+[data-theme="light"] svg[class*="text-revit-text"][class*="/50"] {
+  color: rgba(50, 49, 48, 0.5) !important;
+}
+
+/* Doc type colors - adjust for light mode readability */
+[data-theme="light"] .text-green-400 {
+  color: #16a34a !important; /* Darker green for light mode */
+}
+
+[data-theme="light"] .text-blue-400 {
+  color: #2563eb !important; /* Darker blue for light mode */
+}
+
+[data-theme="light"] .text-purple-400 {
+  color: #9333ea !important; /* Darker purple for light mode */
+}
+
+[data-theme="light"] .text-cyan-400 {
+  color: #0891b2 !important; /* Darker cyan for light mode */
+}
+
+[data-theme="light"] .text-yellow-400 {
+  color: #ca8a04 !important; /* Darker yellow for light mode */
+}
+
+/* Select dropdown text */
+[data-theme="light"] select,
+[data-theme="light"] select option {
+  color: var(--revit-text) !important;
+  background-color: var(--revit-dark) !important;
+}
+
+[data-theme="light"] body {
+  background-color: var(--revit-darker) !important;
+  color: var(--revit-text) !important;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--revit-darker);
+  color: var(--revit-text);
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--revit-darker);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--revit-border);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--revit-text);
+  opacity: 0.5;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--revit-text);
+  opacity: 0.3;
+}
+
+/* Input styling */
+input, textarea, select {
+  background-color: var(--revit-dark);
+  border: 1px solid var(--revit-border);
+  color: var(--revit-text);
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--revit-primary);
+  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+}
+
+input:disabled, textarea:disabled, select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Button styling */
+button {
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Table styling */
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th, td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--revit-border);
+}
+
+th {
+  background-color: var(--revit-dark);
+  font-weight: 600;
+  color: var(--revit-text);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+tr:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+/* Animation */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Custom utilities */
+.panel {
+  background-color: var(--revit-panel);
+  border: 1px solid var(--revit-border);
+  border-radius: 6px;
+}
+
+.panel-header {
+  background-color: var(--revit-dark);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--revit-border);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* Status badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.badge-verified {
+  background-color: rgba(78, 201, 176, 0.2);
+  color: var(--revit-success);
+}
+
+.badge-unverified {
+  background-color: rgba(220, 220, 170, 0.2);
+  color: var(--revit-warning);
+}
+
+.badge-user-provided {
+  background-color: rgba(86, 156, 214, 0.2);
+  color: var(--revit-accent);
+}
+
+.badge-needs-link {
+  background-color: rgba(241, 76, 76, 0.2);
+  color: var(--revit-error);
+}
+
+/* Confidence indicator */
+.confidence-bar {
+  height: 4px;
+  background-color: var(--revit-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.confidence-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.confidence-high {
+  background-color: var(--revit-success);
+}
+
+.confidence-medium {
+  background-color: var(--revit-warning);
+}
+
+.confidence-low {
+  background-color: var(--revit-error);
+}
+
