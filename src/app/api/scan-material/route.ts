@@ -61,9 +61,14 @@ interface ProgressUpdate {
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('[scan-material] POST request received');
     const body: SingleScanRequest = await request.json();
+    console.log('[scan-material] Request body parsed successfully');
     
     if (!body.project || !body.material) {
+      console.error('[scan-material] Invalid request: missing project or material');
+      console.error('[scan-material] Project:', body.project);
+      console.error('[scan-material] Material:', body.material);
       return NextResponse.json(
         { error: 'Invalid request: project and material are required' },
         { status: 400 }
@@ -71,11 +76,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Always use streaming for progress updates
+    console.log('[scan-material] Starting streaming scan');
     return streamScanProgress(body);
   } catch (error) {
-    console.error('Single material scan error:', error);
+    console.error('[scan-material] POST handler error');
+    console.error('[scan-material] Error object:', error);
     
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    const errorStack = error instanceof Error ? error.stack : 'No stack trace';
+    
+    console.error('[scan-material] Error message:', errorMessage);
+    console.error('[scan-material] Error stack:', errorStack);
     
     if (errorMessage.includes('OPENAI_API_KEY')) {
       return NextResponse.json(
@@ -102,26 +113,65 @@ async function streamScanProgress(body: SingleScanRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      let streamClosed = false;
+      
       const sendProgress = (message: string) => {
-        const update: ProgressUpdate = { type: 'progress', message };
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(update)}\n\n`));
+        if (streamClosed) {
+          console.warn('[scan-material] Attempted to send progress after stream closed');
+          return;
+        }
+        try {
+          const update: ProgressUpdate = { type: 'progress', message };
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(update)}\n\n`));
+        } catch (err) {
+          console.error('[scan-material] Error sending progress:', err);
+        }
       };
 
       const sendComplete = (data: any) => {
-        const update: ProgressUpdate = { type: 'complete', message: 'Scan complete', data };
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(update)}\n\n`));
-        controller.close();
+        if (streamClosed) {
+          console.warn('[scan-material] Attempted to send complete after stream closed');
+          return;
+        }
+        try {
+          const update: ProgressUpdate = { type: 'complete', message: 'Scan complete', data };
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(update)}\n\n`));
+          streamClosed = true;
+          controller.close();
+        } catch (err) {
+          console.error('[scan-material] Error sending complete:', err);
+          try {
+            controller.close();
+          } catch {}
+        }
       };
 
       const sendError = (error: string) => {
-        const update: ProgressUpdate = { type: 'error', message: error };
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(update)}\n\n`));
-        controller.close();
+        if (streamClosed) {
+          console.warn('[scan-material] Attempted to send error after stream closed');
+          return;
+        }
+        try {
+          const update: ProgressUpdate = { type: 'error', message: error };
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(update)}\n\n`));
+          streamClosed = true;
+          controller.close();
+        } catch (err) {
+          console.error('[scan-material] Error sending error message:', err);
+          try {
+            controller.close();
+          } catch {}
+        }
       };
 
       try {
         const model = body.settings?.model || 'sonar-pro';
         const conservativeMode = body.settings?.conservativeMode || false;
+        
+        // Log scan start for debugging
+        console.log(`[scan-material] Starting scan for material: ${body.material.name} (${body.material.id})`);
+        console.log(`[scan-material] Model: ${model}, Conservative: ${conservativeMode}`);
+        console.log(`[scan-material] Project: ${body.project.name}, ZIP: ${body.project.zip}`);
 
         // STAGE 1: Get product recommendations (preferring documented products)
         sendProgress('Finding sustainable products...');
@@ -165,8 +215,13 @@ async function streamScanProgress(body: SingleScanRequest) {
         }
 
         if (!responseText) {
+          console.error('[scan-material] No response received from AI');
+          console.error('[scan-material] Model:', model);
+          console.error('[scan-material] Material:', body.material.name);
           throw new Error('No response received from AI');
         }
+        
+        console.log(`[scan-material] Received AI response (${responseText.length} chars)`);
 
         // Parse product recommendations
         let jsonStr = responseText;
@@ -184,8 +239,12 @@ async function streamScanProgress(body: SingleScanRequest) {
         let parsedResponse: AIResponse;
         try {
           parsedResponse = JSON.parse(jsonStr);
-        } catch {
-          console.error('Failed to parse AI response:', responseText);
+          console.log(`[scan-material] Parsed ${parsedResponse.recommendations?.length || 0} recommendations`);
+        } catch (parseError) {
+          console.error('[scan-material] Failed to parse AI response as JSON');
+          console.error('[scan-material] Parse error:', parseError);
+          console.error('[scan-material] Response text (first 500 chars):', responseText.substring(0, 500));
+          console.error('[scan-material] Extracted JSON string (first 500 chars):', jsonStr.substring(0, 500));
           throw new Error('Failed to parse AI response as JSON');
         }
 
@@ -316,7 +375,12 @@ async function streamScanProgress(body: SingleScanRequest) {
                 }
               }
             } catch (error) {
-              console.error('Doc search failed for', rec.product_label, error);
+              console.error(`[scan-material] Doc search failed for product: ${rec.product_label}`);
+              console.error('[scan-material] Error details:', error);
+              if (error instanceof Error) {
+                console.error('[scan-material] Error message:', error.message);
+                console.error('[scan-material] Error stack:', error.stack);
+              }
               sendProgress(`Error searching documentation for ${rec.product_label}`);
             }
           } else {
@@ -390,16 +454,41 @@ async function streamScanProgress(body: SingleScanRequest) {
           recommendations: sortedRecommendations,
         };
 
+        console.log(`[scan-material] Scan complete for material: ${body.material.name}`);
+        console.log(`[scan-material] Returning ${sortedRecommendations.length} recommendations`);
         sendComplete(result);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        // Log full error details for Netlify debugging
+        console.error('[scan-material] Scan error occurred');
+        console.error('[scan-material] Material:', body.material.name, `(${body.material.id})`);
+        console.error('[scan-material] Project:', body.project.name);
+        console.error('[scan-material] Error object:', error);
         
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        const errorStack = error instanceof Error ? error.stack : 'No stack trace available';
+        
+        console.error('[scan-material] Error message:', errorMessage);
+        console.error('[scan-material] Error stack:', errorStack);
+        
+        // Log additional context if available
+        if (error instanceof Error && 'cause' in error) {
+          console.error('[scan-material] Error cause:', (error as any).cause);
+        }
+        
+        // Send user-friendly error message
         if (errorMessage.includes('OPENAI_API_KEY')) {
+          console.error('[scan-material] OpenAI API key missing');
           sendError('OpenAI API key is not configured. Add OPENAI_API_KEY to .env.local');
         } else if (errorMessage.includes('PERPLEXITY_API_KEY')) {
+          console.error('[scan-material] Perplexity API key missing');
           sendError('Perplexity API key is not configured. Add PERPLEXITY_API_KEY to .env.local');
         } else {
-          sendError(`Scan failed: ${errorMessage}`);
+          // Include error message in response for debugging
+          const detailedError = process.env.NODE_ENV === 'production' 
+            ? `Scan failed: ${errorMessage}` 
+            : `Scan failed: ${errorMessage}\n\nStack: ${errorStack}`;
+          console.error('[scan-material] Sending error to client:', detailedError);
+          sendError(detailedError);
         }
       }
     },
