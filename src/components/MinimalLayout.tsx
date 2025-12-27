@@ -108,17 +108,13 @@ export default function MinimalLayout({
     setScanProgress(['Starting scan...']);
     
     try {
-      // Use Firebase Functions for scanning (longer timeout, no 30s limit)
-      // Hardcoded for production since env vars can be tricky with Next.js static builds
-      const isProduction = typeof window !== 'undefined' && 
-        !window.location.hostname.includes('localhost');
-      const firebaseUrl = process.env.NEXT_PUBLIC_FIREBASE_FUNCTIONS_URL || 
-        (isProduction ? 'https://us-central1-materialdex-677c3.cloudfunctions.net' : null);
-      const scanUrl = firebaseUrl 
-        ? `${firebaseUrl}/scanMaterial`
-        : '/api/scan-material';
+      // Use Firebase Functions for production (longer timeout than Netlify's 30s limit)
+      const FIREBASE_SCAN_URL = 'https://us-central1-materialdex-677c3.cloudfunctions.net/scanMaterial';
+      const isLocalhost = typeof window !== 'undefined' && 
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+      const scanUrl = isLocalhost ? '/api/scan-material' : FIREBASE_SCAN_URL;
       
-      console.log('[Materialdex] Using scan URL:', scanUrl);
+      console.log('[Materialdex] Scan URL:', scanUrl, 'isLocalhost:', isLocalhost);
       
       const response = await fetch(scanUrl, {
         method: 'POST',
