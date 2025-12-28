@@ -1,14 +1,17 @@
-import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import {onRequest} from "firebase-functions/v2/https";
+import {setGlobalOptions} from "firebase-functions/v2";
 import OpenAI from "openai";
-import cors from "cors";
 import {Request, Response} from "express";
 
 // Initialize Firebase Admin
 admin.initializeApp();
 
-// CORS middleware
-const corsHandler = cors({origin: true});
+// Set global options for v2 functions
+setGlobalOptions({
+  maxInstances: 10,
+  region: "us-central1",
+});
 
 // ============================================================================
 // TYPES
@@ -766,26 +769,26 @@ Search: ${query}`,
 // MAIN SCAN FUNCTION
 // ============================================================================
 
-export const scanMaterial = functions
-  .runWith({
+export const scanMaterial = onRequest(
+  {
     timeoutSeconds: 540, // 9 minutes
-    memory: "512MB",
-  })
-  .https.onRequest((req: Request, res: Response) => {
-    // Handle CORS manually for streaming responses
-    const origin = req.headers.origin;
-    if (origin) {
-      res.setHeader("Access-Control-Allow-Origin", origin);
-      res.setHeader("Access-Control-Allow-Credentials", "true");
-    }
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
+    memory: "512MiB",
+    cors: true, // Enable CORS
+  },
+  (req: Request, res: Response) => {
     // Handle preflight OPTIONS request
     if (req.method === "OPTIONS") {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
       res.status(200).end();
       return;
     }
+
+    // Set CORS headers for streaming responses
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
     // Set headers for SSE - disable buffering for streaming
     res.setHeader("Content-Type", "text/event-stream");
@@ -1096,11 +1099,15 @@ export const scanMaterial = functions
         sendError(`Scan failed: ${errorMessage}`);
       }
     })();
-  });
+  }
+);
 
 // Health check endpoint
-export const health = functions.https.onRequest((req, res) => {
-  corsHandler(req, res, () => {
+export const health = onRequest(
+  {
+    cors: true,
+  },
+  (req: Request, res: Response) => {
     res.json({status: "ok", timestamp: new Date().toISOString()});
-  });
-});
+  }
+);
