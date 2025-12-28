@@ -787,6 +787,32 @@ export const scanMaterial = functions
       // Send initial connection message to establish SSE connection
       res.write(": connected\n\n");
 
+      // Keepalive mechanism to force delivery of buffered messages
+      // Firebase Functions buffers responses, so we send periodic keepalives
+      let keepaliveInterval: NodeJS.Timeout | null = null;
+      const startKeepalive = () => {
+        keepaliveInterval = setInterval(() => {
+          try {
+            res.write(": keepalive\n\n");
+          } catch (err) {
+            // Connection closed, stop keepalive
+            if (keepaliveInterval) {
+              clearInterval(keepaliveInterval);
+              keepaliveInterval = null;
+            }
+          }
+        }, 2000); // Send keepalive every 2 seconds
+      };
+
+      const stopKeepalive = () => {
+        if (keepaliveInterval) {
+          clearInterval(keepaliveInterval);
+          keepaliveInterval = null;
+        }
+      };
+
+      startKeepalive();
+
       const sendProgress = (message: string) => {
         try {
           const data = `data: ${JSON.stringify({type: "progress", message})}\n\n`;
@@ -794,15 +820,18 @@ export const scanMaterial = functions
           console.log(`[SCAN] Progress: ${message}`);
         } catch (err) {
           console.error("[SCAN] Error sending progress:", err);
+          stopKeepalive();
         }
       };
 
       const sendComplete = (data: unknown) => {
+        stopKeepalive();
         res.write(`data: ${JSON.stringify({type: "complete", message: "Scan complete", data})}\n\n`);
         res.end();
       };
 
       const sendError = (error: string) => {
+        stopKeepalive();
         res.write(`data: ${JSON.stringify({type: "error", message: error})}\n\n`);
         res.end();
       };
