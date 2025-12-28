@@ -22,6 +22,7 @@ namespace Materialdex
         public static DockablePaneId DockablePaneId => new DockablePaneId(new Guid("B8E5C9A2-3B7D-4E6F-8A1C-9D2E3F4B5C6B"));
         internal static UIApplication? _uiApplication;
         private static bool _idlingHandlerRegistered = false;
+        private static Document? _lastCheckedDocument = null;
         
         public Result OnStartup(UIControlledApplication application)
         {
@@ -85,8 +86,9 @@ namespace Materialdex
         }
 
         /// <summary>
-        /// Idling event handler to capture UIApplication.
+        /// Idling event handler to capture UIApplication and detect document changes.
         /// This ensures we have access to the active document even if the panel auto-shows.
+        /// Also checks for document changes and proactively sends updates to the web app.
         /// </summary>
         private void OnIdling(object? sender, IdlingEventArgs e)
         {
@@ -96,6 +98,77 @@ namespace Materialdex
                 _uiApplication = uiApp;
                 Debug.WriteLine("Materialdex: Captured UIApplication via Idling event");
             }
+
+            // Check for document changes and proactively send updates
+            // Only check if the pane is shown and initialized
+            if (DockablePane != null && DockablePane.IsInitialized() && _uiApplication != null)
+            {
+                try
+                {
+                    var activeDoc = _uiApplication.ActiveUIDocument?.Document;
+                    
+                    // Check if document changed
+                    if (activeDoc != null && activeDoc != _lastCheckedDocument)
+                    {
+                        // Get document ID for comparison
+                        string currentDocId = GetDocumentId(activeDoc);
+                        string lastDocId = _lastCheckedDocument != null ? GetDocumentId(_lastCheckedDocument) : "";
+                        
+                        if (currentDocId != lastDocId)
+                        {
+                            Debug.WriteLine($"Materialdex: Document changed detected via Idling event: {activeDoc.Title}");
+                            _lastCheckedDocument = activeDoc;
+                            
+                            // Proactively refresh the web app with new document data
+                            DockablePane.RefreshFromActiveDocument();
+                        }
+                    }
+                    else if (_lastCheckedDocument == null && activeDoc != null)
+                    {
+                        // First time detecting a document
+                        _lastCheckedDocument = activeDoc;
+                        Debug.WriteLine($"Materialdex: Initial document detected via Idling event: {activeDoc.Title}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Materialdex: Error checking document in Idling handler: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets a unique identifier for a document (path or GUID).
+        /// </summary>
+        private string GetDocumentId(Document doc)
+        {
+            if (doc == null) return "";
+
+            // Try to use path as identifier
+            if (!string.IsNullOrEmpty(doc.PathName))
+            {
+                return doc.PathName;
+            }
+
+            // For workshared files, use central model path
+            if (doc.IsWorkshared)
+            {
+                try
+                {
+                    ModelPath centralPath = doc.GetWorksharingCentralModelPath();
+                    if (centralPath != null)
+                    {
+                        return ModelPathUtils.ConvertModelPathToUserVisiblePath(centralPath);
+                    }
+                }
+                catch
+                {
+                    // Ignore errors
+                }
+            }
+
+            // Fallback to GUID or hash code
+            return doc.ProjectInformation?.UniqueId ?? doc.GetHashCode().ToString();
         }
 
         public Result OnShutdown(UIControlledApplication application)

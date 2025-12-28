@@ -379,9 +379,18 @@ namespace Materialdex
         }
 
         /// <summary>
-        /// Refreshes materials and project info from the current active document.
+        /// Checks if the WebView is initialized and ready.
         /// </summary>
-        private void RefreshFromActiveDocument()
+        public bool IsInitialized()
+        {
+            return _isInitialized && WebView.CoreWebView2 != null;
+        }
+
+        /// <summary>
+        /// Refreshes materials and project info from the current active document.
+        /// Can be called from App.cs to proactively update when document changes.
+        /// </summary>
+        public void RefreshFromActiveDocument()
         {
             if (App._uiApplication == null)
             {

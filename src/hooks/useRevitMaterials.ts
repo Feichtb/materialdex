@@ -146,6 +146,7 @@ export function useRevitMaterials() {
   }, [convertRevitMaterial]);
 
   // Request initial materials on mount if Revit bridge is available
+  // Plugin will proactively send updates via Idling event, so we only need initial request
   useEffect(() => {
     if (typeof window !== 'undefined' && window.revitBridge?.isRevitPlugin) {
       // Small delay to ensure bridge is fully initialized
