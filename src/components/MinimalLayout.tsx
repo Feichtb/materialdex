@@ -78,6 +78,8 @@ export default function MinimalLayout({
   const [productStatuses, setProductStatuses] = useState<Array<{productNum: number; productName: string; status: string}>>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [isFindingMore, setIsFindingMore] = useState(false);
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const [completedProducts, setCompletedProducts] = useState<Array<{productNum: number; productName: string; status: string}>>([]);
 
   // Check if running in Revit plugin
   const isRevitPlugin = typeof window !== 'undefined' && window.revitBridge?.isRevitPlugin;
@@ -100,6 +102,30 @@ export default function MinimalLayout({
       .map(r => ({ ...r, materialId: m.id, materialName: m.name }))
   );
 
+  // Handle scan cancellation
+  const handleCancelScan = () => {
+    if (abortController) {
+      abortController.abort();
+      setAbortController(null);
+      
+      // Collect completed products from current statuses
+      const completed = productStatuses.filter(p => 
+        p.status.includes('Complete') || p.status.includes('Found:') || p.status.includes('No high-confidence docs found')
+      );
+      
+      if (completed.length > 0 && selectedMaterial) {
+        // Create partial result with only completed products
+        // We'll need to get the actual product data from the backend
+        // For now, just show a message that scan was cancelled
+        setScanProgress([`Scan cancelled. ${completed.length} product(s) completed.`]);
+      } else {
+        setScanProgress(['Scan cancelled.']);
+      }
+      
+      setIsScanning(false);
+    }
+  };
+
   // Scan single material with progress updates
   const handleScan = async () => {
     if (!selectedMaterial) return;
@@ -108,6 +134,11 @@ export default function MinimalLayout({
     setScanError(null);
     setScanProgress(['Starting scan...']);
     setProductStatuses([]);
+    setCompletedProducts([]);
+    
+    // Create abort controller for cancellation
+    const controller = new AbortController();
+    setAbortController(controller);
     
     try {
       // Use Firebase Functions for production (longer timeout than Netlify's 30s limit)
@@ -129,6 +160,7 @@ export default function MinimalLayout({
           project,
           settings,
         }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -141,6 +173,7 @@ export default function MinimalLayout({
       const decoder = new TextDecoder();
       let buffer = '';
       let result: any = null;
+      let partialRecommendations: any[] = [];
 
       if (!reader) {
         throw new Error('No response body');
@@ -176,13 +209,30 @@ export default function MinimalLayout({
                 if (data.products && Array.isArray(data.products)) {
                   console.log('[Materialdex] Received product statuses:', data.products);
                   setProductStatuses(data.products);
+                  
+                  // Track completed products
+                  const completed = data.products.filter((p: any) => 
+                    p.status.includes('Complete') || p.status.includes('Found:') || p.status.includes('No high-confidence docs found')
+                  );
+                  setCompletedProducts(completed);
                 } else {
                   console.warn('[Materialdex] Invalid productStatus format:', data);
+                }
+              } else if (data.type === 'productComplete') {
+                // Backend sends individual product completion
+                if (data.product) {
+                  partialRecommendations.push(data.product);
                 }
               } else if (data.type === 'complete') {
                 result = data.data;
                 setScanProgress([]);
                 setProductStatuses([]);
+              } else if (data.type === 'cancelled') {
+                // Backend detected cancellation and sent partial results
+                if (data.data && data.data.recommendations) {
+                  result = data.data;
+                  setScanProgress([`Scan cancelled. ${data.data.recommendations.length} product(s) completed.`]);
+                }
               } else if (data.type === 'error') {
                 throw new Error(data.message);
               }
@@ -197,15 +247,54 @@ export default function MinimalLayout({
       if (result) {
         onSingleScanComplete(result);
         setExpandedProduct(null);
+      } else if (partialRecommendations.length > 0 && selectedMaterial) {
+        // Create partial result from completed products
+        const partialResult = {
+          id: selectedMaterial.id,
+          name: selectedMaterial.name,
+          normalized_category: 'Other',
+          category_confidence: 0.5,
+          notes_for_user: `Partial scan results (${partialRecommendations.length} of ${productStatuses.length} products completed)`,
+          recommendations: partialRecommendations,
+        };
+        onSingleScanComplete(partialResult);
+        setExpandedProduct(null);
       } else {
-        throw new Error('No result received');
+        // Check if we have completed products from statuses
+        const completed = productStatuses.filter(p => 
+          p.status.includes('Complete') || p.status.includes('Found:') || p.status.includes('No high-confidence docs found')
+        );
+        if (completed.length === 0) {
+          throw new Error('No result received');
+        }
       }
     } catch (error) {
-      setScanError(error instanceof Error ? error.message : 'Scan failed');
-      setScanProgress([]);
-      setProductStatuses([]);
+      if (error instanceof Error && error.name === 'AbortError') {
+        // Scan was cancelled - check if we got a cancelled event with results
+        console.log('[Materialdex] Scan cancelled by user');
+        
+        // If we already have a result from the cancelled event, it's already handled above
+        if (!result) {
+          // The backend might have sent a cancelled event, but if connection closed too quickly,
+          // we won't have received it. In that case, we can't get the actual product data,
+          // so we just show a message
+          const completed = productStatuses.filter(p => 
+            p.status.includes('Complete') || p.status.includes('Found:') || p.status.includes('No high-confidence docs found')
+          );
+          if (completed.length > 0) {
+            setScanProgress([`Scan cancelled. ${completed.length} product(s) were completed, but data was not received. Please try scanning again.`]);
+          } else {
+            setScanProgress(['Scan cancelled.']);
+          }
+        }
+      } else {
+        setScanError(error instanceof Error ? error.message : 'Scan failed');
+        setScanProgress([]);
+        setProductStatuses([]);
+      }
     } finally {
       setIsScanning(false);
+      setAbortController(null);
     }
   };
 
@@ -582,28 +671,40 @@ export default function MinimalLayout({
 
             {/* Scan Button - Revit 2026 style with accent color */}
             <div className="space-y-2">
-              <button
-                onClick={handleScan}
-                disabled={isScanning || !selectedMaterial}
-                className="w-full py-2.5 bg-revit-success hover:bg-[#3db89f] disabled:bg-revit-border disabled:text-revit-text/40 text-revit-darker font-semibold rounded text-sm flex items-center justify-center gap-2 transition-colors"
-              >
-                {isScanning ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Scanning...
-                  </>
-                ) : scannedResult ? (
-                  <>
-                    <RefreshCw className="w-4 h-4" />
-                    Re-scan
-                  </>
-                ) : (
-                  <>
-                    <Search className="w-4 h-4" />
-                    Find Products
-                  </>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleScan}
+                  disabled={isScanning || !selectedMaterial}
+                  className="flex-1 py-2.5 bg-revit-success hover:bg-[#3db89f] disabled:bg-revit-border disabled:text-revit-text/40 text-revit-darker font-semibold rounded text-sm flex items-center justify-center gap-2 transition-colors"
+                >
+                  {isScanning ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Scanning...
+                    </>
+                  ) : scannedResult ? (
+                    <>
+                      <RefreshCw className="w-4 h-4" />
+                      Re-scan
+                    </>
+                  ) : (
+                    <>
+                      <Search className="w-4 h-4" />
+                      Find Products
+                    </>
+                  )}
+                </button>
+                {isScanning && (
+                  <button
+                    onClick={handleCancelScan}
+                    className="px-4 py-2.5 bg-revit-border hover:bg-revit-border/80 text-revit-text font-semibold rounded text-sm flex items-center justify-center gap-2 transition-colors"
+                    title="Cancel scan and return completed products"
+                  >
+                    <X className="w-4 h-4" />
+                    Cancel
+                  </button>
                 )}
-              </button>
+              </div>
               
               {/* Progress indicator */}
               {productStatuses.length > 0 ? (

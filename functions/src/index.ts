@@ -873,14 +873,51 @@ export const scanMaterial = onRequest(
 
       const sendComplete = (data: unknown) => {
         stopKeepalive();
-        res.write(`data: ${JSON.stringify({type: "complete", message: "Scan complete", data})}\n\n`);
-        res.end();
+        try {
+          res.write(`data: ${JSON.stringify({type: "complete", message: "Scan complete", data})}\n\n`);
+          res.end();
+        } catch (err) {
+          console.error("[SCAN] Error sending complete:", err);
+        }
+      };
+
+      const sendCancelled = (data: unknown) => {
+        stopKeepalive();
+        try {
+          res.write(`data: ${JSON.stringify({type: "cancelled", message: "Scan cancelled", data})}\n\n`);
+          res.end();
+        } catch (err) {
+          console.error("[SCAN] Error sending cancelled:", err);
+        }
       };
 
       const sendError = (error: string) => {
         stopKeepalive();
-        res.write(`data: ${JSON.stringify({type: "error", message: error})}\n\n`);
-        res.end();
+        try {
+          res.write(`data: ${JSON.stringify({type: "error", message: error})}\n\n`);
+          res.end();
+        } catch (err) {
+          console.error("[SCAN] Error sending error:", err);
+        }
+      };
+
+      // Track if connection is closed
+      let connectionClosed = false;
+      
+      // Override res.write to detect when connection closes
+      const originalWrite = res.write.bind(res);
+      res.write = function(chunk: any, encoding?: any, callback?: any) {
+        try {
+          return originalWrite(chunk, encoding, callback);
+        } catch (err) {
+          connectionClosed = true;
+          throw err;
+        }
+      };
+
+      // Check if connection is still alive
+      const isConnectionAlive = () => {
+        return !connectionClosed;
       };
 
       try {
@@ -997,10 +1034,16 @@ export const scanMaterial = onRequest(
         // Small delay to ensure message is sent and received
         await new Promise(resolve => setTimeout(resolve, 200));
 
-        // Process all products concurrently using Promise.all
+        // Process all products concurrently using Promise.allSettled to handle cancellation
         const productPromises = sortedRecs.slice(0, totalProducts).map(async (rec, index) => {
           const productNum = index + 1;
           const productName = rec.product_label || "Unknown Product";
+
+          // Check if connection is still alive before starting
+          if (!isConnectionAlive()) {
+            console.log(`[SCAN] Connection closed, skipping product ${productNum}`);
+            throw new Error("Connection closed");
+          }
 
           updateProductStatus(productNum, productName, "Starting search...");
 
@@ -1016,10 +1059,19 @@ export const scanMaterial = onRequest(
 
           if (perplexityKey && rec.product_label) {
             try {
+              // Check connection before starting search
+              if (!isConnectionAlive()) {
+                throw new Error("Connection closed");
+              }
+
               updateProductStatus(productNum, productName, "Searching documentation...");
 
               // Create progress callback with product context
               const productProgressCallback = (message: string) => {
+                // Check connection before updating status
+                if (!isConnectionAlive()) {
+                  throw new Error("Connection closed");
+                }
                 // Update product status with the message directly
                 updateProductStatus(productNum, productName, message);
               };
@@ -1030,6 +1082,11 @@ export const scanMaterial = onRequest(
                 perplexityKey,
                 productProgressCallback
               );
+
+              // Check connection after search completes
+              if (!isConnectionAlive()) {
+                throw new Error("Connection closed");
+              }
 
               // Log confidence values for debugging
               if (docSearch.byType.epd.length > 0) {
@@ -1103,6 +1160,10 @@ export const scanMaterial = onRequest(
                 updateProductStatus(productNum, productName, "Complete - No high-confidence docs found");
               }
             } catch (error) {
+              if (error instanceof Error && error.message === "Connection closed") {
+                console.log(`[SCAN] Connection closed during search for product ${productNum}`);
+                throw error;
+              }
               console.error(`[SCAN] Doc search failed for ${rec.product_label}:`, error);
               updateProductStatus(productNum, productName, "Error searching documentation");
             }
@@ -1127,11 +1188,40 @@ export const scanMaterial = onRequest(
           };
         });
 
-        // Wait for all product searches to complete concurrently
-        const recommendations = await Promise.all(productPromises);
+        // Wait for all product searches to complete, but handle cancellation
+        const results = await Promise.allSettled(productPromises);
+        
+        // Check if connection was closed
+        if (!isConnectionAlive()) {
+          // Collect completed products (only those that finished successfully)
+          const completedProducts = results
+            .filter((r): r is PromiseFulfilledResult<typeof results[0] extends Promise<infer T> ? T : never> => 
+              r.status === 'fulfilled'
+            )
+            .map(r => r.value);
+          
+          console.log(`[SCAN] Connection closed, returning ${completedProducts.length} completed products`);
+          const partialResult = {
+            id: body.material.id,
+            name: parsedResponse.name || body.material.name,
+            normalized_category: parsedResponse.normalized_category || "Other",
+            category_confidence: parsedResponse.category_confidence || 0.5,
+            notes_for_user: `Partial scan results (${completedProducts.length} of ${totalProducts} products completed)`,
+            recommendations: completedProducts,
+          };
+          sendCancelled(partialResult);
+          return;
+        }
+
+        // Collect successful results
+        const recommendations = results
+          .filter((r): r is PromiseFulfilledResult<typeof results[0] extends Promise<infer T> ? T : never> => 
+            r.status === 'fulfilled'
+          )
+          .map(r => r.value);
         
         // Mark all as complete
-        for (let i = 0; i < totalProducts; i++) {
+        for (let i = 0; i < recommendations.length; i++) {
           const rec = recommendations[i];
           const currentStatus = productStatuses[i]?.status || "Complete";
           if (!currentStatus.includes("Complete") && !currentStatus.includes("Error")) {

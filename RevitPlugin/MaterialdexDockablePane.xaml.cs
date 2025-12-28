@@ -302,6 +302,134 @@ namespace Materialdex
         }
 
         /// <summary>
+        /// Checks if the active document has changed from the cached document.
+        /// </summary>
+        private bool HasDocumentChanged()
+        {
+            if (App._uiApplication == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                var activeDoc = App._uiApplication.ActiveUIDocument?.Document;
+                
+                // If no cached document, consider it changed
+                if (_lastDocument == null)
+                {
+                    return activeDoc != null;
+                }
+
+                // If no active document, don't consider it changed
+                if (activeDoc == null)
+                {
+                    return false;
+                }
+
+                // Compare documents by their path or GUID
+                // Use PathName as primary identifier, fallback to GUID
+                string cachedId = GetDocumentId(_lastDocument);
+                string activeId = GetDocumentId(activeDoc);
+                
+                return cachedId != activeId;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error checking document change: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Gets a unique identifier for a document (path or GUID).
+        /// </summary>
+        private string GetDocumentId(Document doc)
+        {
+            if (doc == null)
+            {
+                return "";
+            }
+
+            // Try to use path as identifier
+            if (!string.IsNullOrEmpty(doc.PathName))
+            {
+                return doc.PathName;
+            }
+
+            // For workshared files, use central model path
+            if (doc.IsWorkshared)
+            {
+                try
+                {
+                    ModelPath centralPath = doc.GetWorksharingCentralModelPath();
+                    if (centralPath != null)
+                    {
+                        return ModelPathUtils.ConvertModelPathToUserVisiblePath(centralPath);
+                    }
+                }
+                catch
+                {
+                    // Ignore errors
+                }
+            }
+
+            // Fallback to GUID or hash code
+            return doc.ProjectInformation?.UniqueId ?? doc.GetHashCode().ToString();
+        }
+
+        /// <summary>
+        /// Refreshes materials and project info from the current active document.
+        /// </summary>
+        private void RefreshFromActiveDocument()
+        {
+            if (App._uiApplication == null)
+            {
+                Debug.WriteLine("Cannot refresh: UIApplication not available");
+                return;
+            }
+
+            try
+            {
+                var activeUIDoc = App._uiApplication.ActiveUIDocument;
+                if (activeUIDoc == null)
+                {
+                    Debug.WriteLine("Cannot refresh: No active document");
+                    return;
+                }
+
+                Document doc = activeUIDoc.Document;
+                Debug.WriteLine($"Refreshing from document: {doc.Title ?? "Unnamed"}");
+
+                // Update cached document
+                _lastDocument = doc;
+                
+                // Clear cached materials to force re-extraction
+                _cachedMaterials = null;
+                
+                // Extract materials
+                _cachedMaterials = MaterialExtractor.ExtractMaterials(doc);
+                Debug.WriteLine($"Extracted {_cachedMaterials.Count} materials from model");
+                
+                // Send project info
+                SendProjectInfoToWebView();
+                
+                // Send materials
+                if (_cachedMaterials.Count > 0)
+                {
+                    SendMaterialsToWebView(_cachedMaterials);
+                }
+                
+                UpdateStatus($"Refreshed: {_cachedMaterials.Count} materials from {doc.Title ?? "current project"}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error refreshing from active document: {ex.Message}");
+                UpdateStatus($"Error refreshing: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Extracts project information from the Revit document and sends it to the web application.
         /// </summary>
         private void SendProjectInfoToWebView()
@@ -487,25 +615,44 @@ namespace Materialdex
                     Dispatcher.Invoke(() => {
                         Debug.WriteLine("NavigationCompleted: Sending theme (3000ms delay)");
                         SendThemeToWebView();
-                        // Also send project info after page loads
-                        SendProjectInfoToWebView();
                         
-                        // Pre-extract materials so they're ready when requested
-                        if (_cachedMaterials == null || _cachedMaterials.Count == 0)
+                        // Check if document has changed and refresh if needed
+                        // This ensures that when a new project is opened, materials and project info are updated
+                        if (HasDocumentChanged())
                         {
-                            if (App._uiApplication != null)
+                            Debug.WriteLine("NavigationCompleted: Document changed, refreshing materials and project info");
+                            RefreshFromActiveDocument();
+                        }
+                        else
+                        {
+                            // Document hasn't changed, but still send project info and materials if available
+                            SendProjectInfoToWebView();
+                            
+                            // If we have cached materials, send them
+                            if (_cachedMaterials != null && _cachedMaterials.Count > 0)
                             {
+                                SendMaterialsToWebView(_cachedMaterials);
+                            }
+                            else if (App._uiApplication != null)
+                            {
+                                // No cached materials, try to extract from active document
                                 try
                                 {
-                                    Document doc = App._uiApplication.ActiveUIDocument.Document;
-                                    _lastDocument = doc;
-                                    _cachedMaterials = MaterialExtractor.ExtractMaterials(doc);
-                                    Debug.WriteLine($"Pre-extracted {_cachedMaterials.Count} materials from model");
-                                    
-                                    // Send materials automatically if extracted
-                                    if (_cachedMaterials.Count > 0)
+                                    Document doc = App._uiApplication.ActiveUIDocument?.Document;
+                                    if (doc != null)
                                     {
-                                        SendMaterialsToWebView(_cachedMaterials);
+                                        _lastDocument = doc;
+                                        _cachedMaterials = MaterialExtractor.ExtractMaterials(doc);
+                                        Debug.WriteLine($"Pre-extracted {_cachedMaterials.Count} materials from model");
+                                        
+                                        // Send materials automatically if extracted
+                                        if (_cachedMaterials.Count > 0)
+                                        {
+                                            SendMaterialsToWebView(_cachedMaterials);
+                                        }
+                                        
+                                        // Also send project info
+                                        SendProjectInfoToWebView();
                                     }
                                 }
                                 catch (Exception ex)
@@ -559,8 +706,14 @@ namespace Materialdex
                             Debug.WriteLine($"App._uiApplication is null: {App._uiApplication == null}");
                             Debug.WriteLine($"_cachedMaterials count: {_cachedMaterials?.Count ?? 0}");
                             
+                            // Check if document has changed - if so, refresh everything
+                            if (HasDocumentChanged())
+                            {
+                                Debug.WriteLine("Document changed when materials requested, refreshing");
+                                RefreshFromActiveDocument();
+                            }
                             // If no cached materials, try to extract from active document
-                            if (_cachedMaterials == null || _cachedMaterials.Count == 0)
+                            else if (_cachedMaterials == null || _cachedMaterials.Count == 0)
                             {
                                 // Try to get active document and extract materials
                                 if (App._uiApplication != null)
@@ -617,8 +770,17 @@ namespace Materialdex
                         else if (type == "extractMaterials")
                         {
                             Debug.WriteLine("Extract materials requested from web");
-                            // Extract materials from active document
-                            App.ExtractMaterialsFromActiveDocument();
+                            // Check if document has changed first
+                            if (HasDocumentChanged())
+                            {
+                                Debug.WriteLine("Document changed when extract requested, refreshing");
+                                RefreshFromActiveDocument();
+                            }
+                            else
+                            {
+                                // Extract materials from active document
+                                App.ExtractMaterialsFromActiveDocument();
+                            }
                         }
                         else if (type == "requestProjectInfo")
                         {

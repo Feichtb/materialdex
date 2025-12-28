@@ -124,7 +124,9 @@ async function streamScanProgress(body: SingleScanRequest) {
           const update: ProgressUpdate = { type: 'progress', message };
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(update)}\n\n`));
         } catch (err) {
-          console.error('[scan-material] Error sending progress:', err);
+          console.log('[scan-material] Stream closed by client during progress send');
+          streamClosed = true;
+          cleanupAndClose();
         }
       };
 
@@ -153,6 +155,21 @@ async function streamScanProgress(body: SingleScanRequest) {
           cleanupAndClose();
         } catch (err) {
           console.error('[scan-material] Error sending complete:', err);
+          cleanupAndClose();
+        }
+      };
+
+      const sendCancelled = (data: any) => {
+        if (streamClosed) {
+          console.warn('[scan-material] Attempted to send cancelled after stream closed');
+          return;
+        }
+        try {
+          const update: ProgressUpdate = { type: 'cancelled', message: 'Scan cancelled', data };
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(update)}\n\n`));
+          cleanupAndClose();
+        } catch (err) {
+          console.error('[scan-material] Error sending cancelled:', err);
           cleanupAndClose();
         }
       };
@@ -290,12 +307,42 @@ async function streamScanProgress(body: SingleScanRequest) {
         const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
         
         for (let i = 0; i < totalProducts; i++) {
+          // Check if stream is closed (client cancelled)
+          if (streamClosed) {
+            console.log(`[scan-material] Stream closed, returning ${recommendations.length} completed products`);
+            const partialResult = {
+              id: body.material.id,
+              name: parsedResponse.name || body.material.name,
+              normalized_category: parsedResponse.normalized_category || 'Other',
+              category_confidence: parsedResponse.category_confidence || 0.5,
+              notes_for_user: `Partial scan results (${recommendations.length} of ${totalProducts} products completed)`,
+              recommendations,
+            };
+            sendCancelled(partialResult);
+            return;
+          }
+
           const rec = sortedRecs[i];
           const productNum = i + 1;
           
           // Add delay between searches to avoid rate limiting (except first)
           if (i > 0) {
             await delay(500); // 500ms delay between searches
+          }
+          
+          // Check again after delay
+          if (streamClosed) {
+            console.log(`[scan-material] Stream closed after delay, returning ${recommendations.length} completed products`);
+            const partialResult = {
+              id: body.material.id,
+              name: parsedResponse.name || body.material.name,
+              normalized_category: parsedResponse.normalized_category || 'Other',
+              category_confidence: parsedResponse.category_confidence || 0.5,
+              notes_for_user: `Partial scan results (${recommendations.length} of ${totalProducts} products completed)`,
+              recommendations,
+            };
+            sendCancelled(partialResult);
+            return;
           }
           
           // Initialize doc checklist
@@ -311,12 +358,29 @@ async function streamScanProgress(body: SingleScanRequest) {
           // Search for all documentation types
           if (perplexityKey && rec.product_label) {
             try {
+              // Check if stream is closed before starting search
+              if (streamClosed) {
+                console.log(`[scan-material] Stream closed before search, returning ${recommendations.length} completed products`);
+                const partialResult = {
+                  id: body.material.id,
+                  name: parsedResponse.name || body.material.name,
+                  normalized_category: parsedResponse.normalized_category || 'Other',
+                  category_confidence: parsedResponse.category_confidence || 0.5,
+                  notes_for_user: `Partial scan results (${recommendations.length} of ${totalProducts} products completed)`,
+                  recommendations,
+                };
+                sendCancelled(partialResult);
+                return;
+              }
+
               sendProgress(`Product ${productNum} of ${totalProducts}: ${rec.product_label}`);
               sendProgress(`Searching documentation for ${rec.product_label}...`);
               
               // Create a progress callback that includes product number context
               const productProgressCallback = (message: string) => {
-                sendProgress(`Product ${productNum} of ${totalProducts}: ${message}`);
+                if (!streamClosed) {
+                  sendProgress(`Product ${productNum} of ${totalProducts}: ${message}`);
+                }
               };
               
               docSearch = await searchForDocumentation(
@@ -325,6 +389,21 @@ async function streamScanProgress(body: SingleScanRequest) {
                 perplexityKey,
                 productProgressCallback
               );
+              
+              // Check if stream closed during search
+              if (streamClosed) {
+                console.log(`[scan-material] Stream closed during search, returning ${recommendations.length} completed products`);
+                const partialResult = {
+                  id: body.material.id,
+                  name: parsedResponse.name || body.material.name,
+                  normalized_category: parsedResponse.normalized_category || 'Other',
+                  category_confidence: parsedResponse.category_confidence || 0.5,
+                  notes_for_user: `Partial scan results (${recommendations.length} of ${totalProducts} products completed)`,
+                  recommendations,
+                };
+                sendCancelled(partialResult);
+                return;
+              }
               
               // Send summary of found links
               if (docSearch) {
