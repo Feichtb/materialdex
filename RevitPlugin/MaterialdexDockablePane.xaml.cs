@@ -349,47 +349,97 @@ namespace Materialdex
                 string address = "";
                 string zip = "";
                 
+                Debug.WriteLine("=== ZIPCODE RETRIEVAL DEBUG ===");
+                
                 // Get location from SiteLocation (Location and Site function)
                 SiteLocation siteLocation = doc.SiteLocation;
+                Debug.WriteLine($"SiteLocation is null: {siteLocation == null}");
+                
                 if (siteLocation != null)
                 {
+                    Debug.WriteLine($"SiteLocation.PostalCode: '{siteLocation.PostalCode}'");
+                    Debug.WriteLine($"SiteLocation.PostalCode is null or empty: {string.IsNullOrEmpty(siteLocation.PostalCode)}");
+                    Debug.WriteLine($"SiteLocation.Address: '{siteLocation.Address}'");
+                    Debug.WriteLine($"SiteLocation.Address is null or empty: {string.IsNullOrEmpty(siteLocation.Address)}");
+                    
                     // Get postal code (zipcode) directly from SiteLocation
                     if (!string.IsNullOrEmpty(siteLocation.PostalCode))
                     {
                         zip = siteLocation.PostalCode;
+                        Debug.WriteLine($"✓ Retrieved ZIP from SiteLocation.PostalCode: '{zip}'");
+                    }
+                    else
+                    {
+                        Debug.WriteLine("✗ SiteLocation.PostalCode is empty or null");
                     }
                     
                     // Get address from SiteLocation if available
                     if (!string.IsNullOrEmpty(siteLocation.Address))
                     {
                         address = siteLocation.Address;
+                        Debug.WriteLine($"✓ Retrieved address from SiteLocation.Address: '{address}'");
                     }
+                    else
+                    {
+                        Debug.WriteLine("✗ SiteLocation.Address is empty or null");
+                    }
+                }
+                else
+                {
+                    Debug.WriteLine("✗ SiteLocation is null - cannot retrieve from Location and Site");
                 }
                 
                 // Fallback to ProjectInformation if SiteLocation doesn't have the data
+                Debug.WriteLine($"Current ZIP value before fallback: '{zip}'");
                 if (string.IsNullOrEmpty(zip) && doc.ProjectInformation != null)
                 {
+                    Debug.WriteLine("Attempting fallback to ProjectInformation...");
                     // Get address from ProjectInformation parameters as fallback
                     Parameter addressParam = doc.ProjectInformation.get_Parameter(BuiltInParameter.PROJECT_ADDRESS);
-                    if (addressParam != null && !string.IsNullOrEmpty(addressParam.AsString()))
+                    Debug.WriteLine($"PROJECT_ADDRESS parameter is null: {addressParam == null}");
+                    
+                    if (addressParam != null)
                     {
-                        if (string.IsNullOrEmpty(address))
-                        {
-                            address = addressParam.AsString();
-                        }
+                        string addressParamValue = addressParam.AsString();
+                        Debug.WriteLine($"PROJECT_ADDRESS parameter value: '{addressParamValue}'");
+                        Debug.WriteLine($"PROJECT_ADDRESS parameter is null or empty: {string.IsNullOrEmpty(addressParamValue)}");
                         
-                        // Try to extract ZIP code from address if not found in SiteLocation
-                        if (string.IsNullOrEmpty(zip))
+                        if (!string.IsNullOrEmpty(addressParamValue))
                         {
-                            System.Text.RegularExpressions.Regex zipRegex = new System.Text.RegularExpressions.Regex(@"\b\d{5}(-\d{4})?\b");
-                            System.Text.RegularExpressions.Match zipMatch = zipRegex.Match(address);
-                            if (zipMatch.Success)
+                            if (string.IsNullOrEmpty(address))
                             {
-                                zip = zipMatch.Value;
+                                address = addressParamValue;
+                                Debug.WriteLine($"✓ Set address from PROJECT_ADDRESS: '{address}'");
+                            }
+                            
+                            // Try to extract ZIP code from address if not found in SiteLocation
+                            if (string.IsNullOrEmpty(zip))
+                            {
+                                Debug.WriteLine("Attempting to extract ZIP from address using regex...");
+                                System.Text.RegularExpressions.Regex zipRegex = new System.Text.RegularExpressions.Regex(@"\b\d{5}(-\d{4})?\b");
+                                System.Text.RegularExpressions.Match zipMatch = zipRegex.Match(address);
+                                Debug.WriteLine($"Regex match success: {zipMatch.Success}");
+                                if (zipMatch.Success)
+                                {
+                                    zip = zipMatch.Value;
+                                    Debug.WriteLine($"✓ Extracted ZIP from address: '{zip}'");
+                                }
+                                else
+                                {
+                                    Debug.WriteLine("✗ No ZIP code pattern found in address");
+                                }
                             }
                         }
                     }
                 }
+                else if (string.IsNullOrEmpty(zip))
+                {
+                    Debug.WriteLine("✗ No fallback available - ProjectInformation is null or ZIP already found");
+                }
+                
+                Debug.WriteLine($"Final ZIP value: '{zip}'");
+                Debug.WriteLine($"Final address value: '{address}'");
+                Debug.WriteLine("=== END ZIPCODE RETRIEVAL DEBUG ===");
 
                 // Create project info object
                 var projectInfo = new
@@ -403,7 +453,8 @@ namespace Materialdex
                 string json = JsonConvert.SerializeObject(projectInfo);
                 string script = $"window.revitBridge.receiveProjectInfo({json});";
                 WebView.CoreWebView2.ExecuteScriptAsync(script);
-                Debug.WriteLine($"Sent project info to web: {projectName}, ZIP: {zip}");
+                Debug.WriteLine($"Sent project info to web: Name='{projectName}', ZIP='{zip}', Address='{address}', ProjectId='{projectId}'");
+                Debug.WriteLine($"Full project info JSON: {json}");
             }
             catch (Exception ex)
             {
