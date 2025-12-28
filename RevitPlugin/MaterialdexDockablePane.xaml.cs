@@ -719,11 +719,29 @@ namespace Materialdex
             }
         }
 
+        /// <summary>
+        /// Logs a message to the browser console for debugging.
+        /// </summary>
+        private void LogToBrowserConsole(string message)
+        {
+            if (_isInitialized && WebView.CoreWebView2 != null)
+            {
+                try
+                {
+                    string script = $"console.log('[Revit Plugin] {message.Replace("'", "\\'")}');";
+                    WebView.CoreWebView2.ExecuteScriptAsync(script);
+                }
+                catch { }
+            }
+            Debug.WriteLine(message);
+        }
+
         private void CoreWebView2_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
             try
             {
                 string message = e.TryGetWebMessageAsString();
+                LogToBrowserConsole($"Message from web: {message}");
                 Debug.WriteLine($"Message from web: {message}");
                 
                 // Parse message and handle requests
@@ -733,31 +751,50 @@ namespace Materialdex
                     if (data != null && data.ContainsKey("type"))
                     {
                         string type = data["type"]?.ToString() ?? "";
+                        LogToBrowserConsole($"Processing message type: {type}");
+                        Debug.WriteLine($"Processing message type: {type}");
                         
                         if (type == "requestTheme")
                         {
+                            LogToBrowserConsole("Theme requested from web, sending current theme");
                             Debug.WriteLine("Theme requested from web, sending current theme");
-                            SendThemeToWebView();
+                            try
+                            {
+                                SendThemeToWebView();
+                            }
+                            catch (Exception ex)
+                            {
+                                LogToBrowserConsole($"Error sending theme: {ex.Message}");
+                                Debug.WriteLine($"Error sending theme: {ex.Message}");
+                            }
                         }
                         else if (type == "requestMaterials")
                         {
+                            LogToBrowserConsole("Materials requested from web");
                             Debug.WriteLine("Materials requested from web");
-                            Debug.WriteLine($"App._uiApplication is null: {App._uiApplication == null}");
-                            Debug.WriteLine($"_cachedMaterials count: {_cachedMaterials?.Count ?? 0}");
-                            Debug.WriteLine($"_lastDocument is null: {_lastDocument == null}");
-                            
-                            // Always check if document has changed when materials are requested
-                            // This ensures auto-refresh works even if page wasn't reloaded
-                            bool docChanged = HasDocumentChanged();
-                            Debug.WriteLine($"HasDocumentChanged returned: {docChanged}");
-                            
-                            if (docChanged || _lastDocument == null)
+                            try
                             {
-                                Debug.WriteLine("Document changed or not set when materials requested, refreshing");
-                                RefreshFromActiveDocument();
-                            }
-                            // If no cached materials, try to extract from active document
-                            else if (_cachedMaterials == null || _cachedMaterials.Count == 0)
+                                LogToBrowserConsole($"App._uiApplication is null: {App._uiApplication == null}");
+                                LogToBrowserConsole($"_cachedMaterials count: {_cachedMaterials?.Count ?? 0}");
+                                LogToBrowserConsole($"_lastDocument is null: {_lastDocument == null}");
+                                Debug.WriteLine($"App._uiApplication is null: {App._uiApplication == null}");
+                                Debug.WriteLine($"_cachedMaterials count: {_cachedMaterials?.Count ?? 0}");
+                                Debug.WriteLine($"_lastDocument is null: {_lastDocument == null}");
+                                
+                                // Always check if document has changed when materials are requested
+                                // This ensures auto-refresh works even if page wasn't reloaded
+                                bool docChanged = HasDocumentChanged();
+                                LogToBrowserConsole($"HasDocumentChanged returned: {docChanged}");
+                                Debug.WriteLine($"HasDocumentChanged returned: {docChanged}");
+                                
+                                if (docChanged || _lastDocument == null)
+                                {
+                                    LogToBrowserConsole("Document changed or not set when materials requested, refreshing");
+                                    Debug.WriteLine("Document changed or not set when materials requested, refreshing");
+                                    RefreshFromActiveDocument();
+                                }
+                                // If no cached materials, try to extract from active document
+                                else if (_cachedMaterials == null || _cachedMaterials.Count == 0)
                             {
                                 // Try to get active document and extract materials
                                 if (App._uiApplication != null)
@@ -801,14 +838,33 @@ namespace Materialdex
                                 }
                             }
                             
-                            // Send all cached materials (no pagination)
-                            if (_cachedMaterials != null && _cachedMaterials.Count > 0)
-                            {
-                                SendMaterialsToWebView(_cachedMaterials);
+                                    // Ensure we always send a response, even if empty
+                                // Check again after RefreshFromActiveDocument might have updated cache
+                                if (_cachedMaterials != null && _cachedMaterials.Count > 0)
+                                {
+                                    LogToBrowserConsole($"Sending {_cachedMaterials.Count} cached materials to web");
+                                    Debug.WriteLine($"Sending {_cachedMaterials.Count} cached materials to web");
+                                    SendMaterialsToWebView(_cachedMaterials);
+                                }
+                                else
+                                {
+                                    LogToBrowserConsole("No cached materials available, sending empty list");
+                                    Debug.WriteLine("No cached materials available, sending empty list");
+                                    SendMaterialsToWebView(new List<MaterialExtractor.ExtractedMaterial>());
+                                    UpdateStatus("No materials available. Please open a Revit document with materials.");
+                                }
                             }
-                            else
+                            catch (Exception ex)
                             {
-                                UpdateStatus("No materials available. Please open a Revit document with materials.");
+                                LogToBrowserConsole($"Error handling requestMaterials: {ex.Message}");
+                                Debug.WriteLine($"Error handling requestMaterials: {ex.Message}");
+                                Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+                                // Try to send empty materials list as fallback
+                                try
+                                {
+                                    SendMaterialsToWebView(new List<MaterialExtractor.ExtractedMaterial>());
+                                }
+                                catch { }
                             }
                         }
                         else if (type == "extractMaterials")
@@ -828,23 +884,43 @@ namespace Materialdex
                         }
                         else if (type == "requestProjectInfo")
                         {
+                            LogToBrowserConsole("Project info requested from web");
                             Debug.WriteLine("Project info requested from web");
-                            Debug.WriteLine($"_lastDocument is null: {_lastDocument == null}");
-                            
-                            // Always check if document has changed when project info is requested
-                            // This ensures auto-refresh works even if page wasn't reloaded
-                            bool docChanged = HasDocumentChanged();
-                            Debug.WriteLine($"HasDocumentChanged returned: {docChanged}");
-                            
-                            if (docChanged || _lastDocument == null)
+                            try
                             {
-                                Debug.WriteLine("Document changed or not set when project info requested, refreshing");
-                                RefreshFromActiveDocument();
+                                LogToBrowserConsole($"_lastDocument is null: {_lastDocument == null}");
+                                Debug.WriteLine($"_lastDocument is null: {_lastDocument == null}");
+                                
+                                // Always check if document has changed when project info is requested
+                                // This ensures auto-refresh works even if page wasn't reloaded
+                                bool docChanged = HasDocumentChanged();
+                                LogToBrowserConsole($"HasDocumentChanged returned: {docChanged}");
+                                Debug.WriteLine($"HasDocumentChanged returned: {docChanged}");
+                                
+                                if (docChanged || _lastDocument == null)
+                                {
+                                    LogToBrowserConsole("Document changed or not set when project info requested, refreshing");
+                                    Debug.WriteLine("Document changed or not set when project info requested, refreshing");
+                                    RefreshFromActiveDocument();
+                                }
+                                else
+                                {
+                                    LogToBrowserConsole("Sending project info (no change detected)");
+                                    Debug.WriteLine("Sending project info (no change detected)");
+                                    SendProjectInfoToWebView();
+                                }
                             }
-                            else
+                            catch (Exception ex)
                             {
-                                Debug.WriteLine("Sending project info (no change detected)");
-                                SendProjectInfoToWebView();
+                                LogToBrowserConsole($"Error handling requestProjectInfo: {ex.Message}");
+                                Debug.WriteLine($"Error handling requestProjectInfo: {ex.Message}");
+                                Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+                                // Try to send project info anyway
+                                try
+                                {
+                                    SendProjectInfoToWebView();
+                                }
+                                catch { }
                             }
                         }
                         else if (type == "requestTheme")
