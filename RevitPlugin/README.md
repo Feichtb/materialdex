@@ -170,6 +170,55 @@ After code changes:
 └─────────────────────────────────────────────────────────┘
 ```
 
+## App Store Package
+
+The plugin is packaged as an Autodesk Application Plug-in Package (`.bundle`) for distribution via the Autodesk App Store.
+
+### Bundle Structure
+
+```
+Materialdex.bundle/
+├── PackageContents.xml          # Package manifest
+└── Contents/                     # Plugin files
+    ├── Materialdex.dll
+    ├── Materialdex.addin
+    ├── [dependencies...]
+    ├── Resources/
+    ├── Help.html
+    └── License.txt
+```
+
+### Creating the Bundle Package
+
+1. **Build Release version:**
+   ```cmd
+   dotnet build Materialdex.csproj -c Release
+   ```
+
+2. **Package for App Store:**
+   ```cmd
+   package-for-store.bat
+   ```
+
+3. **Create ZIP file:**
+   ```cmd
+   create-zip.bat
+   ```
+
+### Installing the Bundle
+
+**Option 1: Use installer script**
+```cmd
+install-bundle.bat
+```
+
+**Option 2: Manual installation**
+Copy `Materialdex.bundle` to:
+- `%AppData%\Autodesk\ApplicationPlugins\` (per-user)
+- `%ProgramData%\Autodesk\ApplicationPlugins\` (per-machine)
+
+See `BUNDLE_README.md` and `APP_STORE_SUBMISSION.md` for detailed information.
+
 ## License
 
 MIT

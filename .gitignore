@@ -66,3 +66,10 @@ RevitPlugin/obj/
 project.assets.json
 project.nuget.cache
 
+# Revit Plugin packaging artifacts
+RevitPlugin/Materialdex.bundle/
+RevitPlugin/Materialdex-v*.zip
+RevitPlugin/test-extract/
+RevitPlugin/*.zip
+RevitPlugin/=!.zip
+
