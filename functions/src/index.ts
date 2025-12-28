@@ -773,13 +773,28 @@ export const scanMaterial = functions
   })
   .https.onRequest((req: Request, res: Response) => {
     corsHandler(req, res, async () => {
-      // Set headers for SSE
+      // Set headers for SSE - disable buffering for streaming
       res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
       res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no"); // Disable nginx buffering
+      
+      // Flush headers immediately to start streaming
+      if (res.flushHeaders) {
+        res.flushHeaders();
+      }
+      
+      // Send initial connection message to establish SSE connection
+      res.write(": connected\n\n");
 
       const sendProgress = (message: string) => {
-        res.write(`data: ${JSON.stringify({type: "progress", message})}\n\n`);
+        try {
+          const data = `data: ${JSON.stringify({type: "progress", message})}\n\n`;
+          res.write(data);
+          console.log(`[SCAN] Progress: ${message}`);
+        } catch (err) {
+          console.error("[SCAN] Error sending progress:", err);
+        }
       };
 
       const sendComplete = (data: unknown) => {
