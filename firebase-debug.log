@@ -1,16 +1,29 @@
-[debug] [2025-12-28T15:14:25.047Z] ----------------------------------------------------------------------
-[debug] [2025-12-28T15:14:25.051Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\feich\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only functions
-[debug] [2025-12-28T15:14:25.051Z] CLI Version:   15.1.0
-[debug] [2025-12-28T15:14:25.052Z] Platform:      win32
-[debug] [2025-12-28T15:14:25.052Z] Node Version:  v24.12.0
-[debug] [2025-12-28T15:14:25.052Z] Time:          Sun Dec 28 2025 07:14:25 GMT-0800 (Pacific Standard Time)
-[debug] [2025-12-28T15:14:25.052Z] ----------------------------------------------------------------------
+[debug] [2025-12-28T15:20:18.056Z] ----------------------------------------------------------------------
+[debug] [2025-12-28T15:20:18.061Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\feich\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only functions
+[debug] [2025-12-28T15:20:18.061Z] CLI Version:   15.1.0
+[debug] [2025-12-28T15:20:18.062Z] Platform:      win32
+[debug] [2025-12-28T15:20:18.062Z] Node Version:  v24.12.0
+[debug] [2025-12-28T15:20:18.062Z] Time:          Sun Dec 28 2025 07:20:18 GMT-0800 (Pacific Standard Time)
+[debug] [2025-12-28T15:20:18.062Z] ----------------------------------------------------------------------
 [debug] 
-[debug] [2025-12-28T15:14:28.404Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
-[debug] [2025-12-28T15:14:28.404Z] > authorizing via signed-in user (feichtb@gmail.com)
-[debug] [2025-12-28T15:14:28.404Z] [iam] checking project materialdex-677c3 for permissions ["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]
-[debug] [2025-12-28T15:14:28.406Z] Checked if tokens are valid: true, expires at: 1766937094728
-[debug] [2025-12-28T15:14:28.406Z] Checked if tokens are valid: true, expires at: 1766937094728
-[debug] [2025-12-28T15:14:28.407Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/materialdex-677c3:testIamPermissions [none]
-[debug] [2025-12-28T15:14:28.407Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/materialdex-677c3:testIamPermissions x-goog-quota-user=projects/materialdex-677c3
-[debug] [2025-12-28T15:14:28.407Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/materialdex-677c3:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[debug] [2025-12-28T15:20:21.048Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-12-28T15:20:21.049Z] > authorizing via signed-in user (feichtb@gmail.com)
+[debug] [2025-12-28T15:20:21.049Z] [iam] checking project materialdex-677c3 for permissions ["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]
+[debug] [2025-12-28T15:20:21.050Z] Checked if tokens are valid: true, expires at: 1766937094728
+[debug] [2025-12-28T15:20:21.051Z] Checked if tokens are valid: true, expires at: 1766937094728
+[debug] [2025-12-28T15:20:21.052Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/materialdex-677c3:testIamPermissions [none]
+[debug] [2025-12-28T15:20:21.052Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/materialdex-677c3:testIamPermissions x-goog-quota-user=projects/materialdex-677c3
+[debug] [2025-12-28T15:20:21.052Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/materialdex-677c3:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[debug] [2025-12-28T15:20:21.177Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/materialdex-677c3:testIamPermissions 200
+[debug] [2025-12-28T15:20:21.178Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/materialdex-677c3:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[debug] [2025-12-28T15:20:21.178Z] Checked if tokens are valid: true, expires at: 1766937094728
+[debug] [2025-12-28T15:20:21.178Z] Checked if tokens are valid: true, expires at: 1766937094728
+[debug] [2025-12-28T15:20:21.178Z] >>> [apiv2][query] POST https://iam.googleapis.com/v1/projects/materialdex-677c3/serviceAccounts/materialdex-677c3@appspot.gserviceaccount.com:testIamPermissions [none]
+[debug] [2025-12-28T15:20:21.178Z] >>> [apiv2][body] POST https://iam.googleapis.com/v1/projects/materialdex-677c3/serviceAccounts/materialdex-677c3@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[debug] [2025-12-28T15:20:21.553Z] <<< [apiv2][status] POST https://iam.googleapis.com/v1/projects/materialdex-677c3/serviceAccounts/materialdex-677c3@appspot.gserviceaccount.com:testIamPermissions 200
+[debug] [2025-12-28T15:20:21.553Z] <<< [apiv2][body] POST https://iam.googleapis.com/v1/projects/materialdex-677c3/serviceAccounts/materialdex-677c3@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[info] 
+[info] === Deploying to 'materialdex-677c3'...
+[info] 
+[info] i  deploying functions 
+[info] Running command: npm --prefix "$RESOURCE_DIR" run build

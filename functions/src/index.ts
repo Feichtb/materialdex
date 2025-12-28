@@ -772,20 +772,37 @@ export const scanMaterial = functions
     memory: "512MB",
   })
   .https.onRequest((req: Request, res: Response) => {
-    corsHandler(req, res, async () => {
-      // Set headers for SSE - disable buffering for streaming
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache, no-transform");
-      res.setHeader("Connection", "keep-alive");
-      res.setHeader("X-Accel-Buffering", "no"); // Disable nginx buffering
-      
-      // Flush headers immediately to start streaming
-      if (res.flushHeaders) {
-        res.flushHeaders();
-      }
-      
-      // Send initial connection message to establish SSE connection
-      res.write(": connected\n\n");
+    // Handle CORS manually for streaming responses
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+    }
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    // Handle preflight OPTIONS request
+    if (req.method === "OPTIONS") {
+      res.status(200).end();
+      return;
+    }
+
+    // Set headers for SSE - disable buffering for streaming
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no"); // Disable nginx buffering
+    
+    // Flush headers immediately to start streaming
+    if (res.flushHeaders) {
+      res.flushHeaders();
+    }
+    
+    // Send initial connection message to establish SSE connection
+    res.write(": connected\n\n");
+
+    // Wrap the rest in an async function
+    (async () => {
 
       // Keepalive mechanism to force delivery of buffered messages
       // Firebase Functions buffers responses, so we send periodic keepalives
@@ -1078,7 +1095,7 @@ export const scanMaterial = functions
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
         sendError(`Scan failed: ${errorMessage}`);
       }
-    });
+    })();
   });
 
 // Health check endpoint
