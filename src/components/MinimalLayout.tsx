@@ -86,8 +86,11 @@ export default function MinimalLayout({
 
   // Auto-select first material
   useEffect(() => {
-    if (!selectedMaterialId && materials.length > 0) {
-      setSelectedMaterialId(materials[0].id);
+    if (materials.length > 0) {
+      // If no material is selected, or the selected material no longer exists, select the first one
+      if (!selectedMaterialId || !materials.find(m => m.id === selectedMaterialId)) {
+        setSelectedMaterialId(materials[0].id);
+      }
     }
   }, [materials, selectedMaterialId]);
 
@@ -674,7 +677,7 @@ export default function MinimalLayout({
               <div className="flex gap-2">
                 <button
                   onClick={handleScan}
-                  disabled={isScanning || !selectedMaterial}
+                  disabled={isScanning || !selectedMaterial || isLoadingMaterials}
                   className="flex-1 py-2.5 bg-revit-success hover:bg-[#3db89f] disabled:bg-revit-border disabled:text-revit-text/40 text-revit-darker font-semibold rounded text-sm flex items-center justify-center gap-2 transition-colors"
                 >
                   {isScanning ? (
