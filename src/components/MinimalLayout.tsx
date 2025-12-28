@@ -337,6 +337,10 @@ export default function MinimalLayout({
       const scanUrl = isLocalhost ? '/api/scan-material' : FIREBASE_SCAN_URL;
       
       console.log('[Materialdex] Find More URL:', scanUrl, 'isLocalhost:', isLocalhost);
+      console.log('[Materialdex] Request payload:', {
+        material: selectedMaterial.name,
+        excludeProducts: existingProducts.length,
+      });
       
       const response = await fetch(scanUrl, {
         method: 'POST',
@@ -352,9 +356,29 @@ export default function MinimalLayout({
         }),
       });
 
+      const contentType = response.headers.get('Content-Type') || '';
+      console.log('[Materialdex] Response status:', response.status, 'Content-Type:', contentType);
+
+      // Check if response is SSE format
+      const isSSE = contentType.includes('text/event-stream');
+      
+      // Firebase Functions always return SSE format, even for errors
+      // But handle non-SSE responses (like errors from Netlify/proxy)
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Scan failed' }));
-        throw new Error(error.error || 'Scan failed');
+        if (!isSSE && response.body) {
+          // Try to read as text first to see what we got
+          const text = await response.text();
+          console.error('[Materialdex] Non-SSE error response:', text.substring(0, 200));
+          try {
+            const error = JSON.parse(text);
+            throw new Error(error.error || `Scan failed with status ${response.status}`);
+          } catch {
+            throw new Error(`Scan failed with status ${response.status}: ${text.substring(0, 100)}`);
+          }
+        } else if (!response.body) {
+          throw new Error(`Scan failed with status ${response.status}`);
+        }
+        // If it's SSE format, continue to read stream (error will be in SSE message)
       }
 
       // Read streaming response (SSE format)
@@ -362,6 +386,8 @@ export default function MinimalLayout({
       const decoder = new TextDecoder();
       let buffer = '';
       let result: any = null;
+      let hasError = false;
+      let errorMessage = '';
 
       if (!reader) {
         throw new Error('No response body');
@@ -384,19 +410,30 @@ export default function MinimalLayout({
           
           if (line.startsWith('data: ')) {
             try {
-              const data = JSON.parse(line.slice(6));
+              const jsonStr = line.slice(6);
+              const data = JSON.parse(jsonStr);
               
               if (data.type === 'complete') {
                 result = data.data;
               } else if (data.type === 'error') {
-                throw new Error(data.message);
+                hasError = true;
+                errorMessage = data.message || 'Unknown error';
+                break; // Exit loop on error
               }
             } catch (e) {
               console.error('[Materialdex] Error parsing SSE data:', e, 'Line:', line);
-              // Skip invalid JSON lines
+              // Continue processing other lines
             }
           }
         }
+        
+        if (hasError) {
+          break; // Exit outer loop on error
+        }
+      }
+
+      if (hasError) {
+        throw new Error(errorMessage);
       }
 
       if (!result) {
