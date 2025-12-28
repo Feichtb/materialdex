@@ -677,7 +677,7 @@ export default function MinimalLayout({
               <div className="flex gap-2">
                 <button
                   onClick={handleScan}
-                  disabled={isScanning || !selectedMaterial || isLoadingMaterials}
+                  disabled={isScanning || !selectedMaterial}
                   className="flex-1 py-2.5 bg-revit-success hover:bg-[#3db89f] disabled:bg-revit-border disabled:text-revit-text/40 text-revit-darker font-semibold rounded text-sm flex items-center justify-center gap-2 transition-colors"
                 >
                   {isScanning ? (
