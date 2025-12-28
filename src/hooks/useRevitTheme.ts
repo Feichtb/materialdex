@@ -22,7 +22,6 @@ export function useRevitTheme() {
         const queuedTheme = (window as any).revitThemeQueue.shift();
         if (queuedTheme) {
           const newTheme = queuedTheme.name || (queuedTheme.isDark ? 'dark' : 'light');
-          console.log('[useRevitTheme] Theme from queue:', newTheme, queuedTheme);
           setTheme(newTheme);
         }
       }
@@ -31,17 +30,11 @@ export function useRevitTheme() {
     // Set up handler for theme messages from Revit
     const handleRevitTheme = (themeInfo: RevitThemeInfo) => {
       const newTheme = themeInfo.name || (themeInfo.isDark ? 'dark' : 'light');
-      console.log('[useRevitTheme] Theme received:', newTheme, themeInfo);
       setTheme(newTheme);
     };
 
     // Register handler
     (window as any).onRevitTheme = handleRevitTheme;
-    console.log('[useRevitTheme] Handler registered');
-    
-    // Debug: Log bridge status
-    console.log('[useRevitTheme] Bridge exists:', !!(window as any).revitBridge);
-    console.log('[useRevitTheme] Current theme queue:', (window as any).revitThemeQueue);
 
     // Check queue immediately
     checkQueue();
@@ -59,17 +52,11 @@ export function useRevitTheme() {
     // Also try to request theme from bridge if it exists
     const requestTheme = () => {
       if ((window as any).revitBridge) {
-        console.log('[useRevitTheme] Bridge exists, requesting theme from Revit');
         checkQueue();
         // Request theme from Revit if bridge supports it
         if ((window as any).revitBridge.requestTheme) {
-          console.log('[useRevitTheme] Calling requestTheme()');
           (window as any).revitBridge.requestTheme();
-        } else {
-          console.log('[useRevitTheme] requestTheme() not available on bridge');
         }
-      } else {
-        console.log('[useRevitTheme] Bridge not yet available');
       }
     };
 
@@ -168,8 +155,6 @@ export function useRevitTheme() {
         clearTimeout(debounceTimer);
       };
     }
-    
-    console.log('[useRevitTheme] Applied theme:', theme, 'data-theme:', root.getAttribute('data-theme'));
   }, [theme]);
 
   return theme;

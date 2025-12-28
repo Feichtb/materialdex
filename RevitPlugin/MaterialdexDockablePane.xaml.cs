@@ -82,10 +82,6 @@ namespace Materialdex
                 WebView.CoreWebView2.NavigationStarting += CoreWebView2_NavigationStarting;
                 WebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
                 WebView.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
-                
-                // Test log to verify WebView is ready
-                Debug.WriteLine("[Revit Plugin] WebMessageReceived handler registered");
-                WebView.CoreWebView2.ExecuteScriptAsync("console.log('[Revit Plugin] WebMessageReceived handler registered');");
 
                 // Inject JavaScript bridge for communication
                 await InjectJavaScriptBridge();
@@ -312,45 +308,34 @@ namespace Materialdex
         {
             if (App._uiApplication == null)
             {
-                Debug.WriteLine("HasDocumentChanged: App._uiApplication is null");
                 return false;
             }
 
             try
             {
                 var activeDoc = App._uiApplication.ActiveUIDocument?.Document;
-                Debug.WriteLine($"HasDocumentChanged: activeDoc is null: {activeDoc == null}");
-                Debug.WriteLine($"HasDocumentChanged: _lastDocument is null: {_lastDocument == null}");
                 
                 // If no cached document, consider it changed
                 if (_lastDocument == null)
                 {
-                    bool hasActiveDoc = activeDoc != null;
-                    Debug.WriteLine($"HasDocumentChanged: No cached document, returning {hasActiveDoc}");
-                    return hasActiveDoc;
+                    return activeDoc != null;
                 }
 
                 // If no active document, don't consider it changed
                 if (activeDoc == null)
                 {
-                    Debug.WriteLine("HasDocumentChanged: No active document, returning false");
                     return false;
                 }
 
                 // Compare documents by their path or GUID
-                // Use PathName as primary identifier, fallback to GUID
                 string cachedId = GetDocumentId(_lastDocument);
                 string activeId = GetDocumentId(activeDoc);
                 
-                Debug.WriteLine($"HasDocumentChanged: cachedId='{cachedId}', activeId='{activeId}'");
-                bool documentsDiffer = cachedId != activeId;
-                Debug.WriteLine($"HasDocumentChanged: returning {documentsDiffer}");
-                return documentsDiffer;
+                return cachedId != activeId;
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"HasDocumentChanged: Error checking document change: {ex.Message}");
-                Debug.WriteLine($"HasDocumentChanged: Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -362,7 +347,6 @@ namespace Materialdex
         {
             if (doc == null)
             {
-                Debug.WriteLine("GetDocumentId: Document is null");
                 return "";
             }
 
@@ -376,32 +360,26 @@ namespace Materialdex
                         ModelPath centralPath = doc.GetWorksharingCentralModelPath();
                         if (centralPath != null)
                         {
-                            string centralPathStr = ModelPathUtils.ConvertModelPathToUserVisiblePath(centralPath);
-                            Debug.WriteLine($"GetDocumentId: Workshared file, using central path: {centralPathStr}");
-                            return centralPathStr;
+                            return ModelPathUtils.ConvertModelPathToUserVisiblePath(centralPath);
                         }
                     }
-                    catch (Exception ex)
+                    catch
                     {
-                        Debug.WriteLine($"GetDocumentId: Error getting central model path: {ex.Message}");
+                        // Ignore errors
                     }
                 }
 
                 // Try to use path as identifier
                 if (!string.IsNullOrEmpty(doc.PathName))
                 {
-                    Debug.WriteLine($"GetDocumentId: Using PathName: {doc.PathName}");
                     return doc.PathName;
                 }
 
                 // Fallback to GUID or hash code
-                string fallbackId = doc.ProjectInformation?.UniqueId ?? doc.GetHashCode().ToString();
-                Debug.WriteLine($"GetDocumentId: Using fallback ID: {fallbackId}");
-                return fallbackId;
+                return doc.ProjectInformation?.UniqueId ?? doc.GetHashCode().ToString();
             }
-            catch (Exception ex)
+            catch
             {
-                Debug.WriteLine($"GetDocumentId: Exception: {ex.Message}");
                 return doc.GetHashCode().ToString();
             }
         }
@@ -420,11 +398,9 @@ namespace Materialdex
         /// </summary>
         public void RefreshFromActiveDocument()
         {
-            Debug.WriteLine("RefreshFromActiveDocument: Starting refresh");
-            
             if (App._uiApplication == null)
             {
-                Debug.WriteLine("RefreshFromActiveDocument: Cannot refresh - UIApplication not available");
+                Debug.WriteLine("Cannot refresh: UIApplication not available");
                 return;
             }
 
@@ -433,18 +409,15 @@ namespace Materialdex
                 var activeUIDoc = App._uiApplication.ActiveUIDocument;
                 if (activeUIDoc == null)
                 {
-                    Debug.WriteLine("RefreshFromActiveDocument: Cannot refresh - No active document");
+                    Debug.WriteLine("Cannot refresh: No active document");
                     return;
                 }
 
                 Document doc = activeUIDoc.Document;
-                Debug.WriteLine($"RefreshFromActiveDocument: Refreshing from document: {doc.Title ?? "Unnamed"}");
-                Debug.WriteLine($"RefreshFromActiveDocument: Document is workshared: {doc.IsWorkshared}");
-                Debug.WriteLine($"RefreshFromActiveDocument: Document PathName: {doc.PathName ?? "null"}");
+                Debug.WriteLine($"Refreshing from document: {doc.Title ?? "Unnamed"}");
 
                 // Update cached document
                 _lastDocument = doc;
-                Debug.WriteLine($"RefreshFromActiveDocument: Updated _lastDocument");
                 
                 // Clear cached materials to force re-extraction
                 _cachedMaterials = null;
@@ -453,24 +426,20 @@ namespace Materialdex
                 try
                 {
                     _cachedMaterials = MaterialExtractor.ExtractMaterials(doc);
-                    Debug.WriteLine($"RefreshFromActiveDocument: Extracted {_cachedMaterials.Count} materials from model");
+                    Debug.WriteLine($"Extracted {_cachedMaterials.Count} materials from model");
                 }
                 catch (Exception extractEx)
                 {
-                    Debug.WriteLine($"RefreshFromActiveDocument: Error extracting materials: {extractEx.Message}");
-                    Debug.WriteLine($"RefreshFromActiveDocument: Stack trace: {extractEx.StackTrace}");
+                    LogErrorToBrowserConsole($"Error extracting materials: {extractEx.Message}");
+                    Debug.WriteLine($"Error extracting materials: {extractEx.Message}");
                     _cachedMaterials = new List<MaterialExtractor.ExtractedMaterial>(); // Empty list
                 }
                 
                 // Always send project info and theme, even if materials extraction failed
-                Debug.WriteLine("RefreshFromActiveDocument: Sending theme");
                 SendThemeToWebView(skipDocumentCheck: true);
-                
-                Debug.WriteLine("RefreshFromActiveDocument: Sending project info");
                 SendProjectInfoToWebView();
                 
                 // Send materials (even if empty)
-                Debug.WriteLine($"RefreshFromActiveDocument: Sending {_cachedMaterials?.Count ?? 0} materials");
                 if (_cachedMaterials != null && _cachedMaterials.Count > 0)
                 {
                     SendMaterialsToWebView(_cachedMaterials);
@@ -482,24 +451,20 @@ namespace Materialdex
                 }
                 
                 UpdateStatus($"Refreshed: {_cachedMaterials?.Count ?? 0} materials from {doc.Title ?? "current project"}");
-                Debug.WriteLine("RefreshFromActiveDocument: Refresh completed successfully");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"RefreshFromActiveDocument: Error refreshing from active document: {ex.Message}");
-                Debug.WriteLine($"RefreshFromActiveDocument: Stack trace: {ex.StackTrace}");
+                LogErrorToBrowserConsole($"Error refreshing from active document: {ex.Message}");
+                Debug.WriteLine($"Error refreshing from active document: {ex.Message}");
+                Debug.WriteLine($"Stack trace: {ex.StackTrace}");
                 UpdateStatus($"Error refreshing: {ex.Message}");
                 
                 // Try to send project info anyway, even if refresh failed
                 try
                 {
-                    Debug.WriteLine("RefreshFromActiveDocument: Attempting to send project info despite error");
                     SendProjectInfoToWebView();
                 }
-                catch (Exception sendEx)
-                {
-                    Debug.WriteLine($"RefreshFromActiveDocument: Failed to send project info: {sendEx.Message}");
-                }
+                catch { }
             }
         }
 
@@ -697,12 +662,10 @@ namespace Materialdex
                 Task.Delay(3000).ContinueWith(_ =>
                 {
                     Dispatcher.Invoke(() => {
-                        Debug.WriteLine("NavigationCompleted: Sending theme (3000ms delay)");
                         SendThemeToWebView();
                         
                         // Always refresh when page loads - this ensures we get the current project
                         // even if document change detection didn't fire
-                        Debug.WriteLine("NavigationCompleted: Page loaded, refreshing from active document");
                         RefreshFromActiveDocument();
                     });
                 });
@@ -724,12 +687,13 @@ namespace Materialdex
         }
 
         /// <summary>
-        /// Logs a message to the browser console for debugging.
+        /// Logs an error message to the browser console for debugging.
+        /// Only logs errors, not routine operations.
         /// </summary>
-        private void LogToBrowserConsole(string message)
+        private void LogErrorToBrowserConsole(string message)
         {
             // Always log to Debug output
-            Debug.WriteLine($"[Revit Plugin] {message}");
+            Debug.WriteLine($"[Revit Plugin ERROR] {message}");
             
             // Try to log to browser console if WebView is ready
             if (_isInitialized && WebView?.CoreWebView2 != null)
@@ -738,31 +702,22 @@ namespace Materialdex
                 {
                     // Escape single quotes and newlines for JavaScript
                     string escapedMessage = message.Replace("'", "\\'").Replace("\n", "\\n").Replace("\r", "");
-                    string script = $"console.log('[Revit Plugin] {escapedMessage}');";
+                    string script = $"console.error('[Revit Plugin ERROR] {escapedMessage}');";
                     WebView.CoreWebView2.ExecuteScriptAsync(script);
                 }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"[Revit Plugin] Failed to log to browser console: {ex.Message}");
-                }
+                catch { }
             }
         }
 
         private void CoreWebView2_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
-            // Log immediately when message is received
-            LogToBrowserConsole("=== WebMessageReceived called ===");
-            Debug.WriteLine("=== WebMessageReceived called ===");
-            
             try
             {
                 string message = e.TryGetWebMessageAsString();
-                LogToBrowserConsole($"Raw message from web: {message}");
-                Debug.WriteLine($"Raw message from web: {message}");
+                Debug.WriteLine($"Message from web: {message}");
                 
                 if (string.IsNullOrEmpty(message))
                 {
-                    LogToBrowserConsole("ERROR: Message is null or empty");
                     Debug.WriteLine("ERROR: Message is null or empty");
                     return;
                 }
@@ -773,61 +728,48 @@ namespace Materialdex
                     var data = JsonConvert.DeserializeObject<Dictionary<string, object>>(message);
                     if (data == null)
                     {
-                        LogToBrowserConsole("ERROR: Failed to parse message as JSON");
+                        LogErrorToBrowserConsole("Failed to parse message as JSON");
                         Debug.WriteLine("ERROR: Failed to parse message as JSON");
                         return;
                     }
                     
                     if (!data.ContainsKey("type"))
                     {
-                        LogToBrowserConsole("ERROR: Message does not contain 'type' key");
+                        LogErrorToBrowserConsole("Message does not contain 'type' key");
                         Debug.WriteLine("ERROR: Message does not contain 'type' key");
                         return;
                     }
                     
                     string type = data["type"]?.ToString() ?? "";
-                    LogToBrowserConsole($"Processing message type: {type}");
                     Debug.WriteLine($"Processing message type: {type}");
                     
                     if (type == "requestTheme")
                     {
-                        LogToBrowserConsole("Theme requested from web, sending current theme");
-                        Debug.WriteLine("Theme requested from web, sending current theme");
+                        Debug.WriteLine("Theme requested from web");
                         try
                         {
                             SendThemeToWebView();
                         }
                         catch (Exception ex)
                         {
-                            LogToBrowserConsole($"Error sending theme: {ex.Message}");
+                            LogErrorToBrowserConsole($"Error sending theme: {ex.Message}");
                             Debug.WriteLine($"Error sending theme: {ex.Message}");
                         }
                     }
                     else if (type == "requestMaterials")
+                    {
+                        Debug.WriteLine("Materials requested from web");
+                        try
                         {
-                            LogToBrowserConsole("Materials requested from web");
-                            Debug.WriteLine("Materials requested from web");
-                            try
+                            // Always check if document has changed when materials are requested
+                            // This ensures auto-refresh works even if page wasn't reloaded
+                            bool docChanged = HasDocumentChanged();
+                            
+                            if (docChanged || _lastDocument == null)
                             {
-                                LogToBrowserConsole($"App._uiApplication is null: {App._uiApplication == null}");
-                                LogToBrowserConsole($"_cachedMaterials count: {_cachedMaterials?.Count ?? 0}");
-                                LogToBrowserConsole($"_lastDocument is null: {_lastDocument == null}");
-                                Debug.WriteLine($"App._uiApplication is null: {App._uiApplication == null}");
-                                Debug.WriteLine($"_cachedMaterials count: {_cachedMaterials?.Count ?? 0}");
-                                Debug.WriteLine($"_lastDocument is null: {_lastDocument == null}");
-                                
-                                // Always check if document has changed when materials are requested
-                                // This ensures auto-refresh works even if page wasn't reloaded
-                                bool docChanged = HasDocumentChanged();
-                                LogToBrowserConsole($"HasDocumentChanged returned: {docChanged}");
-                                Debug.WriteLine($"HasDocumentChanged returned: {docChanged}");
-                                
-                                if (docChanged || _lastDocument == null)
-                                {
-                                    LogToBrowserConsole("Document changed or not set when materials requested, refreshing");
-                                    Debug.WriteLine("Document changed or not set when materials requested, refreshing");
-                                    RefreshFromActiveDocument();
-                                }
+                                Debug.WriteLine("Document changed or not set when materials requested, refreshing");
+                                RefreshFromActiveDocument();
+                            }
                                 // If no cached materials, try to extract from active document
                                 else if (_cachedMaterials == null || _cachedMaterials.Count == 0)
                                 {
@@ -877,13 +819,11 @@ namespace Materialdex
                                 // Check again after RefreshFromActiveDocument might have updated cache
                                 if (_cachedMaterials != null && _cachedMaterials.Count > 0)
                                 {
-                                    LogToBrowserConsole($"Sending {_cachedMaterials.Count} cached materials to web");
                                     Debug.WriteLine($"Sending {_cachedMaterials.Count} cached materials to web");
                                     SendMaterialsToWebView(_cachedMaterials);
                                 }
                                 else
                                 {
-                                    LogToBrowserConsole("No cached materials available, sending empty list");
                                     Debug.WriteLine("No cached materials available, sending empty list");
                                     SendMaterialsToWebView(new List<MaterialExtractor.ExtractedMaterial>());
                                     UpdateStatus("No materials available. Please open a Revit document with materials.");
@@ -891,7 +831,7 @@ namespace Materialdex
                             }
                             catch (Exception ex)
                             {
-                                LogToBrowserConsole($"Error handling requestMaterials: {ex.Message}");
+                                LogErrorToBrowserConsole($"Error handling requestMaterials: {ex.Message}");
                                 Debug.WriteLine($"Error handling requestMaterials: {ex.Message}");
                                 Debug.WriteLine($"Stack trace: {ex.StackTrace}");
                                 // Try to send empty materials list as fallback
@@ -919,35 +859,27 @@ namespace Materialdex
                         }
                         else if (type == "requestProjectInfo")
                         {
-                            LogToBrowserConsole("Project info requested from web");
                             Debug.WriteLine("Project info requested from web");
                             try
                             {
-                                LogToBrowserConsole($"_lastDocument is null: {_lastDocument == null}");
-                                Debug.WriteLine($"_lastDocument is null: {_lastDocument == null}");
-                                
                                 // Always check if document has changed when project info is requested
                                 // This ensures auto-refresh works even if page wasn't reloaded
                                 bool docChanged = HasDocumentChanged();
-                                LogToBrowserConsole($"HasDocumentChanged returned: {docChanged}");
-                                Debug.WriteLine($"HasDocumentChanged returned: {docChanged}");
                                 
                                 if (docChanged || _lastDocument == null)
                                 {
-                                    LogToBrowserConsole("Document changed or not set when project info requested, refreshing");
                                     Debug.WriteLine("Document changed or not set when project info requested, refreshing");
                                     RefreshFromActiveDocument();
                                 }
                                 else
                                 {
-                                    LogToBrowserConsole("Sending project info (no change detected)");
                                     Debug.WriteLine("Sending project info (no change detected)");
                                     SendProjectInfoToWebView();
                                 }
                             }
                             catch (Exception ex)
                             {
-                                LogToBrowserConsole($"Error handling requestProjectInfo: {ex.Message}");
+                                LogErrorToBrowserConsole($"Error handling requestProjectInfo: {ex.Message}");
                                 Debug.WriteLine($"Error handling requestProjectInfo: {ex.Message}");
                                 Debug.WriteLine($"Stack trace: {ex.StackTrace}");
                                 // Try to send project info anyway
@@ -974,14 +906,12 @@ namespace Materialdex
                     }
                     else
                     {
-                        LogToBrowserConsole($"WARNING: Unknown message type: {type}");
                         Debug.WriteLine($"WARNING: Unknown message type: {type}");
                     }
                 }
                 catch (Exception parseEx)
                 {
-                    LogToBrowserConsole($"ERROR parsing message: {parseEx.Message}");
-                    LogToBrowserConsole($"Stack trace: {parseEx.StackTrace}");
+                    LogErrorToBrowserConsole($"Error parsing message: {parseEx.Message}");
                     Debug.WriteLine($"Error parsing message: {parseEx.Message}");
                     Debug.WriteLine($"Stack trace: {parseEx.StackTrace}");
                     // Not a JSON message, ignore
@@ -989,14 +919,10 @@ namespace Materialdex
             }
             catch (Exception ex)
             {
-                LogToBrowserConsole($"ERROR processing web message: {ex.Message}");
-                LogToBrowserConsole($"Stack trace: {ex.StackTrace}");
+                LogErrorToBrowserConsole($"Error processing web message: {ex.Message}");
                 Debug.WriteLine($"Error processing web message: {ex.Message}");
                 Debug.WriteLine($"Stack trace: {ex.StackTrace}");
             }
-            
-            LogToBrowserConsole("=== WebMessageReceived completed ===");
-            Debug.WriteLine("=== WebMessageReceived completed ===");
         }
 
 

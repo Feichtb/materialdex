@@ -32,7 +32,6 @@ function getStorageKey(projectId?: string): string {
   // Use hash of projectId for a unique, fixed-length key
   // This ensures different projects always get different storage keys
   const hashedId = hashString(projectId);
-  console.log(`[Storage] ProjectId: "${projectId}" -> Key: "${STORAGE_KEY_PREFIX}_${hashedId}"`);
   return `${STORAGE_KEY_PREFIX}_${hashedId}`;
 }
 
@@ -60,11 +59,9 @@ export function loadState(projectId?: string): AppState {
   try {
     const storageKey = getStorageKey(projectId);
     const saved = localStorage.getItem(storageKey);
-    console.log(`[Storage] Loading state for projectId "${projectId?.substring(0, 50)}..." from key: ${storageKey}, found: ${saved ? 'yes' : 'no'}`);
     
     if (saved) {
       const parsed = JSON.parse(saved);
-      console.log(`[Storage] Loaded ${parsed.scannedMaterials?.length || 0} scannedMaterials for project "${parsed.project?.name}"`);
       // Merge with defaults to ensure all fields exist
       return {
         ...getDefaultState(),
@@ -85,7 +82,6 @@ export function loadState(projectId?: string): AppState {
     console.error('Failed to load state from localStorage:', error);
   }
   
-  console.log(`[Storage] No saved state found for projectId "${projectId?.substring(0, 50)}...", returning default state`);
   const defaultState = getDefaultState();
   // Set projectId if provided
   if (projectId) {
@@ -109,9 +105,6 @@ export function saveState(state: AppState): void {
     
     const projectId = state.project?.projectId;
     const storageKey = getStorageKey(projectId);
-    
-    // Log save operation for debugging
-    console.log(`[Storage] Saving state for project "${state.project?.name}" (id: ${projectId?.substring(0, 50)}...) with ${state.scannedMaterials.length} scannedMaterials to key: ${storageKey}`);
     
     // Save the state for this project
     localStorage.setItem(storageKey, JSON.stringify(stateToSave));
