@@ -82,6 +82,10 @@ namespace Materialdex
                 WebView.CoreWebView2.NavigationStarting += CoreWebView2_NavigationStarting;
                 WebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
                 WebView.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
+                
+                // Test log to verify WebView is ready
+                Debug.WriteLine("[Revit Plugin] WebMessageReceived handler registered");
+                WebView.CoreWebView2.ExecuteScriptAsync("console.log('[Revit Plugin] WebMessageReceived handler registered');");
 
                 // Inject JavaScript bridge for communication
                 await InjectJavaScriptBridge();
@@ -724,51 +728,82 @@ namespace Materialdex
         /// </summary>
         private void LogToBrowserConsole(string message)
         {
-            if (_isInitialized && WebView.CoreWebView2 != null)
+            // Always log to Debug output
+            Debug.WriteLine($"[Revit Plugin] {message}");
+            
+            // Try to log to browser console if WebView is ready
+            if (_isInitialized && WebView?.CoreWebView2 != null)
             {
                 try
                 {
-                    string script = $"console.log('[Revit Plugin] {message.Replace("'", "\\'")}');";
+                    // Escape single quotes and newlines for JavaScript
+                    string escapedMessage = message.Replace("'", "\\'").Replace("\n", "\\n").Replace("\r", "");
+                    string script = $"console.log('[Revit Plugin] {escapedMessage}');";
                     WebView.CoreWebView2.ExecuteScriptAsync(script);
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[Revit Plugin] Failed to log to browser console: {ex.Message}");
+                }
             }
-            Debug.WriteLine(message);
         }
 
         private void CoreWebView2_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
+            // Log immediately when message is received
+            LogToBrowserConsole("=== WebMessageReceived called ===");
+            Debug.WriteLine("=== WebMessageReceived called ===");
+            
             try
             {
                 string message = e.TryGetWebMessageAsString();
-                LogToBrowserConsole($"Message from web: {message}");
-                Debug.WriteLine($"Message from web: {message}");
+                LogToBrowserConsole($"Raw message from web: {message}");
+                Debug.WriteLine($"Raw message from web: {message}");
+                
+                if (string.IsNullOrEmpty(message))
+                {
+                    LogToBrowserConsole("ERROR: Message is null or empty");
+                    Debug.WriteLine("ERROR: Message is null or empty");
+                    return;
+                }
                 
                 // Parse message and handle requests
                 try
                 {
                     var data = JsonConvert.DeserializeObject<Dictionary<string, object>>(message);
-                    if (data != null && data.ContainsKey("type"))
+                    if (data == null)
                     {
-                        string type = data["type"]?.ToString() ?? "";
-                        LogToBrowserConsole($"Processing message type: {type}");
-                        Debug.WriteLine($"Processing message type: {type}");
-                        
-                        if (type == "requestTheme")
+                        LogToBrowserConsole("ERROR: Failed to parse message as JSON");
+                        Debug.WriteLine("ERROR: Failed to parse message as JSON");
+                        return;
+                    }
+                    
+                    if (!data.ContainsKey("type"))
+                    {
+                        LogToBrowserConsole("ERROR: Message does not contain 'type' key");
+                        Debug.WriteLine("ERROR: Message does not contain 'type' key");
+                        return;
+                    }
+                    
+                    string type = data["type"]?.ToString() ?? "";
+                    LogToBrowserConsole($"Processing message type: {type}");
+                    Debug.WriteLine($"Processing message type: {type}");
+                    
+                    if (type == "requestTheme")
+                    {
+                        LogToBrowserConsole("Theme requested from web, sending current theme");
+                        Debug.WriteLine("Theme requested from web, sending current theme");
+                        try
                         {
-                            LogToBrowserConsole("Theme requested from web, sending current theme");
-                            Debug.WriteLine("Theme requested from web, sending current theme");
-                            try
-                            {
-                                SendThemeToWebView();
-                            }
-                            catch (Exception ex)
-                            {
-                                LogToBrowserConsole($"Error sending theme: {ex.Message}");
-                                Debug.WriteLine($"Error sending theme: {ex.Message}");
-                            }
+                            SendThemeToWebView();
                         }
-                        else if (type == "requestMaterials")
+                        catch (Exception ex)
+                        {
+                            LogToBrowserConsole($"Error sending theme: {ex.Message}");
+                            Debug.WriteLine($"Error sending theme: {ex.Message}");
+                        }
+                    }
+                    else if (type == "requestMaterials")
                         {
                             LogToBrowserConsole("Materials requested from web");
                             Debug.WriteLine("Materials requested from web");
@@ -795,50 +830,50 @@ namespace Materialdex
                                 }
                                 // If no cached materials, try to extract from active document
                                 else if (_cachedMaterials == null || _cachedMaterials.Count == 0)
-                            {
-                                // Try to get active document and extract materials
-                                if (App._uiApplication != null)
                                 {
-                                    try
+                                    // Try to get active document and extract materials
+                                    if (App._uiApplication != null)
                                     {
-                                        var activeUIDoc = App._uiApplication.ActiveUIDocument;
-                                        Debug.WriteLine($"ActiveUIDocument is null: {activeUIDoc == null}");
-                                        
-                                        if (activeUIDoc != null)
+                                        try
                                         {
-                                            Document doc = activeUIDoc.Document;
-                                            Debug.WriteLine($"Document title: {doc?.Title ?? "null"}");
+                                            var activeUIDoc = App._uiApplication.ActiveUIDocument;
+                                            Debug.WriteLine($"ActiveUIDocument is null: {activeUIDoc == null}");
                                             
-                                            _lastDocument = doc;
-                                            _cachedMaterials = MaterialExtractor.ExtractMaterials(doc);
-                                            Debug.WriteLine($"Extracted {_cachedMaterials.Count} materials");
-                                            UpdateStatus($"Extracted {_cachedMaterials.Count} materials from model");
-                                            
-                                            // Also send project info when document is set
-                                            SendProjectInfoToWebView();
+                                            if (activeUIDoc != null)
+                                            {
+                                                Document doc = activeUIDoc.Document;
+                                                Debug.WriteLine($"Document title: {doc?.Title ?? "null"}");
+                                                
+                                                _lastDocument = doc;
+                                                _cachedMaterials = MaterialExtractor.ExtractMaterials(doc);
+                                                Debug.WriteLine($"Extracted {_cachedMaterials.Count} materials");
+                                                UpdateStatus($"Extracted {_cachedMaterials.Count} materials from model");
+                                                
+                                                // Also send project info when document is set
+                                                SendProjectInfoToWebView();
+                                            }
+                                            else
+                                            {
+                                                Debug.WriteLine("No active document - cannot extract materials");
+                                                UpdateStatus("Please open a Revit document first.");
+                                            }
                                         }
-                                        else
+                                        catch (Exception ex)
                                         {
-                                            Debug.WriteLine("No active document - cannot extract materials");
-                                            UpdateStatus("Please open a Revit document first.");
+                                            UpdateStatus($"Error extracting materials: {ex.Message}");
+                                            Debug.WriteLine($"Error extracting materials: {ex.Message}");
+                                            Debug.WriteLine($"Stack trace: {ex.StackTrace}");
                                         }
                                     }
-                                    catch (Exception ex)
+                                    else
                                     {
-                                        UpdateStatus($"Error extracting materials: {ex.Message}");
-                                        Debug.WriteLine($"Error extracting materials: {ex.Message}");
-                                        Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+                                        Debug.WriteLine("App._uiApplication is null - cannot extract materials");
+                                        // Fallback: try to extract via App method
+                                        ExtractAndCacheMaterials();
                                     }
                                 }
-                                else
-                                {
-                                    Debug.WriteLine("App._uiApplication is null - cannot extract materials");
-                                    // Fallback: try to extract via App method
-                                    ExtractAndCacheMaterials();
-                                }
-                            }
-                            
-                                    // Ensure we always send a response, even if empty
+                                
+                                // Ensure we always send a response, even if empty
                                 // Check again after RefreshFromActiveDocument might have updated cache
                                 if (_cachedMaterials != null && _cachedMaterials.Count > 0)
                                 {
@@ -923,32 +958,45 @@ namespace Materialdex
                                 catch { }
                             }
                         }
-                        else if (type == "requestTheme")
+                    else if (type == "requestTheme")
+                    {
+                        Debug.WriteLine("Theme requested from web");
+                        // Check for document changes when theme is requested - this catches project switches
+                        if (HasDocumentChanged())
                         {
-                            Debug.WriteLine("Theme requested from web");
-                            // Check for document changes when theme is requested - this catches project switches
-                            if (HasDocumentChanged())
-                            {
-                                Debug.WriteLine("Document changed when theme requested, refreshing");
-                                RefreshFromActiveDocument();
-                            }
-                            else
-                            {
-                                SendThemeToWebView();
-                            }
+                            Debug.WriteLine("Document changed when theme requested, refreshing");
+                            RefreshFromActiveDocument();
                         }
+                        else
+                        {
+                            SendThemeToWebView();
+                        }
+                    }
+                    else
+                    {
+                        LogToBrowserConsole($"WARNING: Unknown message type: {type}");
+                        Debug.WriteLine($"WARNING: Unknown message type: {type}");
                     }
                 }
                 catch (Exception parseEx)
                 {
+                    LogToBrowserConsole($"ERROR parsing message: {parseEx.Message}");
+                    LogToBrowserConsole($"Stack trace: {parseEx.StackTrace}");
                     Debug.WriteLine($"Error parsing message: {parseEx.Message}");
+                    Debug.WriteLine($"Stack trace: {parseEx.StackTrace}");
                     // Not a JSON message, ignore
                 }
             }
             catch (Exception ex)
             {
+                LogToBrowserConsole($"ERROR processing web message: {ex.Message}");
+                LogToBrowserConsole($"Stack trace: {ex.StackTrace}");
                 Debug.WriteLine($"Error processing web message: {ex.Message}");
+                Debug.WriteLine($"Stack trace: {ex.StackTrace}");
             }
+            
+            LogToBrowserConsole("=== WebMessageReceived completed ===");
+            Debug.WriteLine("=== WebMessageReceived completed ===");
         }
 
 
