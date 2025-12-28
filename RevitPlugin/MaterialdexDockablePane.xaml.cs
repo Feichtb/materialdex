@@ -345,24 +345,48 @@ namespace Materialdex
                     projectId = doc.ProjectInformation?.UniqueId ?? doc.GetHashCode().ToString();
                 }
                 
-                // Try to get address/location from ProjectInformation
+                // Try to get address/location from SiteLocation (Location and Site)
                 string address = "";
                 string zip = "";
                 
-                if (doc.ProjectInformation != null)
+                // Get location from SiteLocation (Location and Site function)
+                SiteLocation siteLocation = doc.SiteLocation;
+                if (siteLocation != null)
                 {
-                    // Get address from ProjectInformation parameters
+                    // Get postal code (zipcode) directly from SiteLocation
+                    if (!string.IsNullOrEmpty(siteLocation.PostalCode))
+                    {
+                        zip = siteLocation.PostalCode;
+                    }
+                    
+                    // Get address from SiteLocation if available
+                    if (!string.IsNullOrEmpty(siteLocation.Address))
+                    {
+                        address = siteLocation.Address;
+                    }
+                }
+                
+                // Fallback to ProjectInformation if SiteLocation doesn't have the data
+                if (string.IsNullOrEmpty(zip) && doc.ProjectInformation != null)
+                {
+                    // Get address from ProjectInformation parameters as fallback
                     Parameter addressParam = doc.ProjectInformation.get_Parameter(BuiltInParameter.PROJECT_ADDRESS);
                     if (addressParam != null && !string.IsNullOrEmpty(addressParam.AsString()))
                     {
-                        address = addressParam.AsString();
-                        
-                        // Try to extract ZIP code from address (look for 5-digit pattern)
-                        System.Text.RegularExpressions.Regex zipRegex = new System.Text.RegularExpressions.Regex(@"\b\d{5}(-\d{4})?\b");
-                        System.Text.RegularExpressions.Match zipMatch = zipRegex.Match(address);
-                        if (zipMatch.Success)
+                        if (string.IsNullOrEmpty(address))
                         {
-                            zip = zipMatch.Value;
+                            address = addressParam.AsString();
+                        }
+                        
+                        // Try to extract ZIP code from address if not found in SiteLocation
+                        if (string.IsNullOrEmpty(zip))
+                        {
+                            System.Text.RegularExpressions.Regex zipRegex = new System.Text.RegularExpressions.Regex(@"\b\d{5}(-\d{4})?\b");
+                            System.Text.RegularExpressions.Match zipMatch = zipRegex.Match(address);
+                            if (zipMatch.Success)
+                            {
+                                zip = zipMatch.Value;
+                            }
                         }
                     }
                 }

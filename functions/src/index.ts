@@ -849,8 +849,11 @@ export const scanMaterial = onRequest(
 
       const sendProductStatus = (productStatuses: Array<{productNum: number; productName: string; status: string}>) => {
         try {
-          const data = `data: ${JSON.stringify({type: "productStatus", products: productStatuses})}\n\n`;
+          // Sort by productNum to ensure consistent order
+          const sorted = [...productStatuses].sort((a, b) => a.productNum - b.productNum);
+          const data = `data: ${JSON.stringify({type: "productStatus", products: sorted})}\n\n`;
           res.write(data);
+          console.log(`[SCAN] Sent product status:`, sorted.map(p => `P${p.productNum}: ${p.status}`).join(", "));
         } catch (err) {
           console.error("[SCAN] Error sending product status:", err);
           stopKeepalive();
@@ -861,6 +864,7 @@ export const scanMaterial = onRequest(
         const existingIndex = productStatuses.findIndex(p => p.productNum === productNum);
         if (existingIndex >= 0) {
           productStatuses[existingIndex].status = status;
+          productStatuses[existingIndex].productName = productName; // Update name in case it changed
         } else {
           productStatuses.push({productNum, productName, status});
         }
@@ -978,11 +982,20 @@ export const scanMaterial = onRequest(
         // Auto-select threshold - only use links with high confidence
         const autoSelectThreshold = 0.8;
 
-        // Initialize product statuses
+        // Initialize product statuses immediately after finding recommendations
+        console.log(`[SCAN] Initializing ${totalProducts} product statuses`);
         for (let i = 0; i < totalProducts; i++) {
           const rec = sortedRecs[i];
-          updateProductStatus(i + 1, rec.product_label || "Unknown Product", "Initializing...");
+          const productName = rec.product_label || "Unknown Product";
+          console.log(`[SCAN] Initializing Product ${i + 1}: ${productName}`);
+          updateProductStatus(i + 1, productName, "Waiting to start...");
         }
+        
+        // Force flush the initial statuses
+        sendProductStatus(productStatuses);
+        
+        // Small delay to ensure message is sent and received
+        await new Promise(resolve => setTimeout(resolve, 200));
 
         // Process all products concurrently using Promise.all
         const productPromises = sortedRecs.slice(0, totalProducts).map(async (rec, index) => {
@@ -1007,24 +1020,8 @@ export const scanMaterial = onRequest(
 
               // Create progress callback with product context
               const productProgressCallback = (message: string) => {
-                // Extract meaningful status from message
-                if (message.includes("Searching EPD")) {
-                  updateProductStatus(productNum, productName, "Searching EPD pages...");
-                } else if (message.includes("Searching HPD")) {
-                  updateProductStatus(productNum, productName, "Searching HPD pages...");
-                } else if (message.includes("Searching Declare")) {
-                  updateProductStatus(productNum, productName, "Searching Declare pages...");
-                } else if (message.includes("Searching VOC")) {
-                  updateProductStatus(productNum, productName, "Searching VOC pages...");
-                } else if (message.includes("Found")) {
-                  updateProductStatus(productNum, productName, message);
-                } else if (message.includes("Categorizing")) {
-                  updateProductStatus(productNum, productName, "Categorizing links...");
-                } else if (message.includes("Validating")) {
-                  updateProductStatus(productNum, productName, "Validating URLs...");
-                } else {
-                  updateProductStatus(productNum, productName, message);
-                }
+                // Update product status with the message directly
+                updateProductStatus(productNum, productName, message);
               };
 
               docSearch = await searchForDocumentation(

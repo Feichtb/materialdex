@@ -156,6 +156,11 @@ export default function MinimalLayout({
         buffer = lines.pop() || '';
 
         for (const line of lines) {
+          // Skip empty lines and comments
+          if (!line.trim() || line.startsWith(':')) {
+            continue;
+          }
+          
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
@@ -169,7 +174,10 @@ export default function MinimalLayout({
               } else if (data.type === 'productStatus') {
                 // Update product statuses for multi-line display
                 if (data.products && Array.isArray(data.products)) {
+                  console.log('[Materialdex] Received product statuses:', data.products);
                   setProductStatuses(data.products);
+                } else {
+                  console.warn('[Materialdex] Invalid productStatus format:', data);
                 }
               } else if (data.type === 'complete') {
                 result = data.data;
@@ -179,6 +187,7 @@ export default function MinimalLayout({
                 throw new Error(data.message);
               }
             } catch (e) {
+              console.error('[Materialdex] Error parsing SSE data:', e, 'Line:', line);
               // Skip invalid JSON lines
             }
           }
