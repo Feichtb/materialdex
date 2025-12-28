@@ -75,6 +75,7 @@ export default function MinimalLayout({
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanProgress, setScanProgress] = useState<string[]>([]);
+  const [productStatuses, setProductStatuses] = useState<Array<{productNum: number; productName: string; status: string}>>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [isFindingMore, setIsFindingMore] = useState(false);
 
@@ -106,6 +107,7 @@ export default function MinimalLayout({
     setIsScanning(true);
     setScanError(null);
     setScanProgress(['Starting scan...']);
+    setProductStatuses([]);
     
     try {
       // Use Firebase Functions for production (longer timeout than Netlify's 30s limit)
@@ -159,14 +161,20 @@ export default function MinimalLayout({
               const data = JSON.parse(line.slice(6));
               
               if (data.type === 'progress') {
+                // Keep legacy progress messages for non-product-specific updates
                 setScanProgress(prev => {
-                  // Keep last 8 messages to avoid overwhelming the UI
                   const updated = [...prev, data.message];
-                  return updated.slice(-8);
+                  return updated.slice(-3); // Keep last 3 general messages
                 });
+              } else if (data.type === 'productStatus') {
+                // Update product statuses for multi-line display
+                if (data.products && Array.isArray(data.products)) {
+                  setProductStatuses(data.products);
+                }
               } else if (data.type === 'complete') {
                 result = data.data;
                 setScanProgress([]);
+                setProductStatuses([]);
               } else if (data.type === 'error') {
                 throw new Error(data.message);
               }
@@ -186,6 +194,7 @@ export default function MinimalLayout({
     } catch (error) {
       setScanError(error instanceof Error ? error.message : 'Scan failed');
       setScanProgress([]);
+      setProductStatuses([]);
     } finally {
       setIsScanning(false);
     }
@@ -496,7 +505,26 @@ export default function MinimalLayout({
               </button>
               
               {/* Progress indicator */}
-              {scanProgress.length > 0 && (
+              {productStatuses.length > 0 ? (
+                <div className="px-3 py-2 bg-revit-primary/10 border border-revit-primary/30 rounded text-xs text-revit-text/80">
+                  <div className="flex items-start gap-2">
+                    <Loader2 className="w-3 h-3 animate-spin text-revit-primary flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 space-y-1.5">
+                      {productStatuses.map((product) => (
+                        <div key={product.productNum} className="flex items-start gap-2">
+                          <span className="font-medium text-revit-primary flex-shrink-0 min-w-[60px]">
+                            Product {product.productNum}:
+                          </span>
+                          <span className="text-revit-text/80 flex-1">
+                            <span className="font-medium">{product.productName}</span>
+                            <span className="ml-2 text-revit-text/60">- {product.status}</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : scanProgress.length > 0 ? (
                 <div className="px-3 py-2 bg-revit-primary/10 border border-revit-primary/30 rounded text-xs text-revit-text/80">
                   <div className="flex items-start gap-2">
                     <Loader2 className="w-3 h-3 animate-spin text-revit-primary flex-shrink-0 mt-0.5" />
@@ -509,7 +537,7 @@ export default function MinimalLayout({
                     </div>
                   </div>
                 </div>
-              )}
+              ) : null}
               
               {/* Find More Materials Button */}
               {scannedResult && scannedResult.recommendations.length > 0 && (

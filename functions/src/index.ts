@@ -833,6 +833,9 @@ export const scanMaterial = onRequest(
 
       startKeepalive();
 
+      // Track product statuses for multi-line progress display
+      const productStatuses: Array<{productNum: number; productName: string; status: string}> = [];
+      
       const sendProgress = (message: string) => {
         try {
           const data = `data: ${JSON.stringify({type: "progress", message})}\n\n`;
@@ -842,6 +845,26 @@ export const scanMaterial = onRequest(
           console.error("[SCAN] Error sending progress:", err);
           stopKeepalive();
         }
+      };
+
+      const sendProductStatus = (productStatuses: Array<{productNum: number; productName: string; status: string}>) => {
+        try {
+          const data = `data: ${JSON.stringify({type: "productStatus", products: productStatuses})}\n\n`;
+          res.write(data);
+        } catch (err) {
+          console.error("[SCAN] Error sending product status:", err);
+          stopKeepalive();
+        }
+      };
+
+      const updateProductStatus = (productNum: number, productName: string, status: string) => {
+        const existingIndex = productStatuses.findIndex(p => p.productNum === productNum);
+        if (existingIndex >= 0) {
+          productStatuses[existingIndex].status = status;
+        } else {
+          productStatuses.push({productNum, productName, status});
+        }
+        sendProductStatus(productStatuses);
       };
 
       const sendComplete = (data: unknown) => {
@@ -955,13 +978,18 @@ export const scanMaterial = onRequest(
         // Auto-select threshold - only use links with high confidence
         const autoSelectThreshold = 0.8;
 
-        sendProgress(`Searching documentation for ${totalProducts} products concurrently...`);
+        // Initialize product statuses
+        for (let i = 0; i < totalProducts; i++) {
+          const rec = sortedRecs[i];
+          updateProductStatus(i + 1, rec.product_label || "Unknown Product", "Initializing...");
+        }
 
         // Process all products concurrently using Promise.all
         const productPromises = sortedRecs.slice(0, totalProducts).map(async (rec, index) => {
           const productNum = index + 1;
+          const productName = rec.product_label || "Unknown Product";
 
-          sendProgress(`Product ${productNum} of ${totalProducts}: ${rec.product_label}`);
+          updateProductStatus(productNum, productName, "Starting search...");
 
           const docChecklist: DocChecklist = {
             epd: {status: "unverified", doc_url: null, registry_id: null},
@@ -975,11 +1003,28 @@ export const scanMaterial = onRequest(
 
           if (perplexityKey && rec.product_label) {
             try {
-              sendProgress(`Searching documentation for ${rec.product_label}...`);
+              updateProductStatus(productNum, productName, "Searching documentation...");
 
               // Create progress callback with product context
               const productProgressCallback = (message: string) => {
-                sendProgress(`Product ${productNum}: ${message}`);
+                // Extract meaningful status from message
+                if (message.includes("Searching EPD")) {
+                  updateProductStatus(productNum, productName, "Searching EPD pages...");
+                } else if (message.includes("Searching HPD")) {
+                  updateProductStatus(productNum, productName, "Searching HPD pages...");
+                } else if (message.includes("Searching Declare")) {
+                  updateProductStatus(productNum, productName, "Searching Declare pages...");
+                } else if (message.includes("Searching VOC")) {
+                  updateProductStatus(productNum, productName, "Searching VOC pages...");
+                } else if (message.includes("Found")) {
+                  updateProductStatus(productNum, productName, message);
+                } else if (message.includes("Categorizing")) {
+                  updateProductStatus(productNum, productName, "Categorizing links...");
+                } else if (message.includes("Validating")) {
+                  updateProductStatus(productNum, productName, "Validating URLs...");
+                } else {
+                  updateProductStatus(productNum, productName, message);
+                }
               };
 
               docSearch = await searchForDocumentation(
@@ -1056,14 +1101,16 @@ export const scanMaterial = onRequest(
               }
 
               if (foundDocs.length > 0) {
-                sendProgress(`Product ${productNum} - Found verified: ${foundDocs.join(", ")}`);
+                updateProductStatus(productNum, productName, `Complete - Found: ${foundDocs.join(", ")}`);
               } else {
-                sendProgress(`Product ${productNum} - No high-confidence documentation found`);
+                updateProductStatus(productNum, productName, "Complete - No high-confidence docs found");
               }
             } catch (error) {
               console.error(`[SCAN] Doc search failed for ${rec.product_label}:`, error);
-              sendProgress(`Product ${productNum} - Error searching documentation`);
+              updateProductStatus(productNum, productName, "Error searching documentation");
             }
+          } else {
+            updateProductStatus(productNum, productName, "Skipped (no API key)");
           }
 
           return {
@@ -1086,7 +1133,14 @@ export const scanMaterial = onRequest(
         // Wait for all product searches to complete concurrently
         const recommendations = await Promise.all(productPromises);
         
-        sendProgress(`Completed documentation search for all ${totalProducts} products`);
+        // Mark all as complete
+        for (let i = 0; i < totalProducts; i++) {
+          const rec = recommendations[i];
+          const currentStatus = productStatuses[i]?.status || "Complete";
+          if (!currentStatus.includes("Complete") && !currentStatus.includes("Error")) {
+            updateProductStatus(i + 1, rec.product_label, "Complete");
+          }
+        }
 
         const result = {
           id: body.material.id,
