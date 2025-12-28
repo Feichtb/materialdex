@@ -420,6 +420,9 @@ namespace Materialdex
                 _cachedMaterials = MaterialExtractor.ExtractMaterials(doc);
                 Debug.WriteLine($"Extracted {_cachedMaterials.Count} materials from model");
                 
+                // Send theme (in case it changed) - skip document check to avoid recursion
+                SendThemeToWebView(skipDocumentCheck: true);
+                
                 // Send project info
                 SendProjectInfoToWebView();
                 
@@ -527,7 +530,8 @@ namespace Materialdex
         /// <summary>
         /// Sends the current Revit UI theme to the web application.
         /// </summary>
-        public void SendThemeToWebView()
+        /// <param name="skipDocumentCheck">If true, skips document change check (used when called from RefreshFromActiveDocument)</param>
+        public void SendThemeToWebView(bool skipDocumentCheck = false)
         {
             if (!_isInitialized || WebView.CoreWebView2 == null)
             {
@@ -537,6 +541,15 @@ namespace Materialdex
 
             try
             {
+                // Check for document changes when sending theme - this catches project switches early
+                // But skip if we're already refreshing (to avoid recursion)
+                if (!skipDocumentCheck && HasDocumentChanged())
+                {
+                    Debug.WriteLine("SendThemeToWebView: Document changed detected, refreshing");
+                    RefreshFromActiveDocument();
+                    return; // RefreshFromActiveDocument will send theme too
+                }
+
                 UITheme currentTheme = UIThemeManager.CurrentTheme;
                 bool isDark = currentTheme == UITheme.Dark;
                 string themeName = isDark ? "dark" : "light";
@@ -625,51 +638,10 @@ namespace Materialdex
                         Debug.WriteLine("NavigationCompleted: Sending theme (3000ms delay)");
                         SendThemeToWebView();
                         
-                        // Check if document has changed and refresh if needed
-                        // This ensures that when a new project is opened, materials and project info are updated
-                        if (HasDocumentChanged())
-                        {
-                            Debug.WriteLine("NavigationCompleted: Document changed, refreshing materials and project info");
-                            RefreshFromActiveDocument();
-                        }
-                        else
-                        {
-                            // Document hasn't changed, but still send project info and materials if available
-                            SendProjectInfoToWebView();
-                            
-                            // If we have cached materials, send them
-                            if (_cachedMaterials != null && _cachedMaterials.Count > 0)
-                            {
-                                SendMaterialsToWebView(_cachedMaterials);
-                            }
-                            else if (App._uiApplication != null)
-                            {
-                                // No cached materials, try to extract from active document
-                                try
-                                {
-                                    Document doc = App._uiApplication.ActiveUIDocument?.Document;
-                                    if (doc != null)
-                                    {
-                                        _lastDocument = doc;
-                                        _cachedMaterials = MaterialExtractor.ExtractMaterials(doc);
-                                        Debug.WriteLine($"Pre-extracted {_cachedMaterials.Count} materials from model");
-                                        
-                                        // Send materials automatically if extracted
-                                        if (_cachedMaterials.Count > 0)
-                                        {
-                                            SendMaterialsToWebView(_cachedMaterials);
-                                        }
-                                        
-                                        // Also send project info
-                                        SendProjectInfoToWebView();
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    Debug.WriteLine($"Error pre-extracting materials: {ex.Message}");
-                                }
-                            }
-                        }
+                        // Always refresh when page loads - this ensures we get the current project
+                        // even if document change detection didn't fire
+                        Debug.WriteLine("NavigationCompleted: Page loaded, refreshing from active document");
+                        RefreshFromActiveDocument();
                     });
                 });
             }
@@ -722,8 +694,8 @@ namespace Materialdex
                                 Debug.WriteLine("Document changed when materials requested, refreshing");
                                 RefreshFromActiveDocument();
                             }
-                            // If no cached materials, try to extract from active document
-                            else if (_cachedMaterials == null || _cachedMaterials.Count == 0)
+                            // If no cached materials or document hasn't been set, refresh from active document
+                            else if (_cachedMaterials == null || _cachedMaterials.Count == 0 || _lastDocument == null)
                             {
                                 // Try to get active document and extract materials
                                 if (App._uiApplication != null)
@@ -795,16 +767,30 @@ namespace Materialdex
                         else if (type == "requestProjectInfo")
                         {
                             Debug.WriteLine("Project info requested from web");
-                            // Check if document has changed when project info is requested
+                            // Always check if document has changed when project info is requested
                             // This ensures auto-refresh works even if page wasn't reloaded
-                            if (HasDocumentChanged())
+                            if (HasDocumentChanged() || _lastDocument == null)
                             {
-                                Debug.WriteLine("Document changed when project info requested, refreshing");
+                                Debug.WriteLine("Document changed or not set when project info requested, refreshing");
                                 RefreshFromActiveDocument();
                             }
                             else
                             {
                                 SendProjectInfoToWebView();
+                            }
+                        }
+                        else if (type == "requestTheme")
+                        {
+                            Debug.WriteLine("Theme requested from web");
+                            // Check for document changes when theme is requested - this catches project switches
+                            if (HasDocumentChanged())
+                            {
+                                Debug.WriteLine("Document changed when theme requested, refreshing");
+                                RefreshFromActiveDocument();
+                            }
+                            else
+                            {
+                                SendThemeToWebView();
                             }
                         }
                     }
