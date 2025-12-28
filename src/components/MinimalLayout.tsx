@@ -332,7 +332,10 @@ export default function MinimalLayout({
       
       const response = await fetch('/api/scan-material', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+        },
         body: JSON.stringify({
           material: selectedMaterial,
           project,
@@ -342,11 +345,55 @@ export default function MinimalLayout({
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({ error: 'Scan failed' }));
         throw new Error(error.error || 'Scan failed');
       }
 
-      const result = await response.json();
+      // Read streaming response (SSE format)
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let result: any = null;
+
+      if (!reader) {
+        throw new Error('No response body');
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          // Skip empty lines and comments
+          if (!line.trim() || line.startsWith(':')) {
+            continue;
+          }
+          
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              if (data.type === 'complete') {
+                result = data.data;
+              } else if (data.type === 'error') {
+                throw new Error(data.message);
+              }
+            } catch (e) {
+              console.error('[Materialdex] Error parsing SSE data:', e, 'Line:', line);
+              // Skip invalid JSON lines
+            }
+          }
+        }
+      }
+
+      if (!result) {
+        throw new Error('No result received');
+      }
       
       // Merge new recommendations with existing ones, avoiding duplicates
       const existingProductLabels = new Set(scannedResult.recommendations.map(r => r.product_label.toLowerCase()));
