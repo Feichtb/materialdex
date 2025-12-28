@@ -308,22 +308,28 @@ namespace Materialdex
         {
             if (App._uiApplication == null)
             {
+                Debug.WriteLine("HasDocumentChanged: App._uiApplication is null");
                 return false;
             }
 
             try
             {
                 var activeDoc = App._uiApplication.ActiveUIDocument?.Document;
+                Debug.WriteLine($"HasDocumentChanged: activeDoc is null: {activeDoc == null}");
+                Debug.WriteLine($"HasDocumentChanged: _lastDocument is null: {_lastDocument == null}");
                 
                 // If no cached document, consider it changed
                 if (_lastDocument == null)
                 {
-                    return activeDoc != null;
+                    bool hasActiveDoc = activeDoc != null;
+                    Debug.WriteLine($"HasDocumentChanged: No cached document, returning {hasActiveDoc}");
+                    return hasActiveDoc;
                 }
 
                 // If no active document, don't consider it changed
                 if (activeDoc == null)
                 {
+                    Debug.WriteLine("HasDocumentChanged: No active document, returning false");
                     return false;
                 }
 
@@ -332,11 +338,15 @@ namespace Materialdex
                 string cachedId = GetDocumentId(_lastDocument);
                 string activeId = GetDocumentId(activeDoc);
                 
-                return cachedId != activeId;
+                Debug.WriteLine($"HasDocumentChanged: cachedId='{cachedId}', activeId='{activeId}'");
+                bool documentsDiffer = cachedId != activeId;
+                Debug.WriteLine($"HasDocumentChanged: returning {documentsDiffer}");
+                return documentsDiffer;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error checking document change: {ex.Message}");
+                Debug.WriteLine($"HasDocumentChanged: Error checking document change: {ex.Message}");
+                Debug.WriteLine($"HasDocumentChanged: Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -348,34 +358,48 @@ namespace Materialdex
         {
             if (doc == null)
             {
+                Debug.WriteLine("GetDocumentId: Document is null");
                 return "";
             }
 
-            // Try to use path as identifier
-            if (!string.IsNullOrEmpty(doc.PathName))
+            try
             {
-                return doc.PathName;
-            }
-
-            // For workshared files, use central model path
-            if (doc.IsWorkshared)
-            {
-                try
+                // For workshared files, use central model path first (most reliable)
+                if (doc.IsWorkshared)
                 {
-                    ModelPath centralPath = doc.GetWorksharingCentralModelPath();
-                    if (centralPath != null)
+                    try
                     {
-                        return ModelPathUtils.ConvertModelPathToUserVisiblePath(centralPath);
+                        ModelPath centralPath = doc.GetWorksharingCentralModelPath();
+                        if (centralPath != null)
+                        {
+                            string centralPathStr = ModelPathUtils.ConvertModelPathToUserVisiblePath(centralPath);
+                            Debug.WriteLine($"GetDocumentId: Workshared file, using central path: {centralPathStr}");
+                            return centralPathStr;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"GetDocumentId: Error getting central model path: {ex.Message}");
                     }
                 }
-                catch
-                {
-                    // Ignore errors
-                }
-            }
 
-            // Fallback to GUID or hash code
-            return doc.ProjectInformation?.UniqueId ?? doc.GetHashCode().ToString();
+                // Try to use path as identifier
+                if (!string.IsNullOrEmpty(doc.PathName))
+                {
+                    Debug.WriteLine($"GetDocumentId: Using PathName: {doc.PathName}");
+                    return doc.PathName;
+                }
+
+                // Fallback to GUID or hash code
+                string fallbackId = doc.ProjectInformation?.UniqueId ?? doc.GetHashCode().ToString();
+                Debug.WriteLine($"GetDocumentId: Using fallback ID: {fallbackId}");
+                return fallbackId;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"GetDocumentId: Exception: {ex.Message}");
+                return doc.GetHashCode().ToString();
+            }
         }
 
         /// <summary>
@@ -392,9 +416,11 @@ namespace Materialdex
         /// </summary>
         public void RefreshFromActiveDocument()
         {
+            Debug.WriteLine("RefreshFromActiveDocument: Starting refresh");
+            
             if (App._uiApplication == null)
             {
-                Debug.WriteLine("Cannot refresh: UIApplication not available");
+                Debug.WriteLine("RefreshFromActiveDocument: Cannot refresh - UIApplication not available");
                 return;
             }
 
@@ -403,41 +429,73 @@ namespace Materialdex
                 var activeUIDoc = App._uiApplication.ActiveUIDocument;
                 if (activeUIDoc == null)
                 {
-                    Debug.WriteLine("Cannot refresh: No active document");
+                    Debug.WriteLine("RefreshFromActiveDocument: Cannot refresh - No active document");
                     return;
                 }
 
                 Document doc = activeUIDoc.Document;
-                Debug.WriteLine($"Refreshing from document: {doc.Title ?? "Unnamed"}");
+                Debug.WriteLine($"RefreshFromActiveDocument: Refreshing from document: {doc.Title ?? "Unnamed"}");
+                Debug.WriteLine($"RefreshFromActiveDocument: Document is workshared: {doc.IsWorkshared}");
+                Debug.WriteLine($"RefreshFromActiveDocument: Document PathName: {doc.PathName ?? "null"}");
 
                 // Update cached document
                 _lastDocument = doc;
+                Debug.WriteLine($"RefreshFromActiveDocument: Updated _lastDocument");
                 
                 // Clear cached materials to force re-extraction
                 _cachedMaterials = null;
                 
                 // Extract materials
-                _cachedMaterials = MaterialExtractor.ExtractMaterials(doc);
-                Debug.WriteLine($"Extracted {_cachedMaterials.Count} materials from model");
+                try
+                {
+                    _cachedMaterials = MaterialExtractor.ExtractMaterials(doc);
+                    Debug.WriteLine($"RefreshFromActiveDocument: Extracted {_cachedMaterials.Count} materials from model");
+                }
+                catch (Exception extractEx)
+                {
+                    Debug.WriteLine($"RefreshFromActiveDocument: Error extracting materials: {extractEx.Message}");
+                    Debug.WriteLine($"RefreshFromActiveDocument: Stack trace: {extractEx.StackTrace}");
+                    _cachedMaterials = new List<MaterialExtractor.ExtractedMaterial>(); // Empty list
+                }
                 
-                // Send theme (in case it changed) - skip document check to avoid recursion
+                // Always send project info and theme, even if materials extraction failed
+                Debug.WriteLine("RefreshFromActiveDocument: Sending theme");
                 SendThemeToWebView(skipDocumentCheck: true);
                 
-                // Send project info
+                Debug.WriteLine("RefreshFromActiveDocument: Sending project info");
                 SendProjectInfoToWebView();
                 
-                // Send materials
-                if (_cachedMaterials.Count > 0)
+                // Send materials (even if empty)
+                Debug.WriteLine($"RefreshFromActiveDocument: Sending {_cachedMaterials?.Count ?? 0} materials");
+                if (_cachedMaterials != null && _cachedMaterials.Count > 0)
                 {
                     SendMaterialsToWebView(_cachedMaterials);
                 }
+                else
+                {
+                    // Send empty materials list to clear the UI
+                    SendMaterialsToWebView(new List<MaterialExtractor.ExtractedMaterial>());
+                }
                 
-                UpdateStatus($"Refreshed: {_cachedMaterials.Count} materials from {doc.Title ?? "current project"}");
+                UpdateStatus($"Refreshed: {_cachedMaterials?.Count ?? 0} materials from {doc.Title ?? "current project"}");
+                Debug.WriteLine("RefreshFromActiveDocument: Refresh completed successfully");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error refreshing from active document: {ex.Message}");
+                Debug.WriteLine($"RefreshFromActiveDocument: Error refreshing from active document: {ex.Message}");
+                Debug.WriteLine($"RefreshFromActiveDocument: Stack trace: {ex.StackTrace}");
                 UpdateStatus($"Error refreshing: {ex.Message}");
+                
+                // Try to send project info anyway, even if refresh failed
+                try
+                {
+                    Debug.WriteLine("RefreshFromActiveDocument: Attempting to send project info despite error");
+                    SendProjectInfoToWebView();
+                }
+                catch (Exception sendEx)
+                {
+                    Debug.WriteLine($"RefreshFromActiveDocument: Failed to send project info: {sendEx.Message}");
+                }
             }
         }
 
@@ -686,16 +744,20 @@ namespace Materialdex
                             Debug.WriteLine("Materials requested from web");
                             Debug.WriteLine($"App._uiApplication is null: {App._uiApplication == null}");
                             Debug.WriteLine($"_cachedMaterials count: {_cachedMaterials?.Count ?? 0}");
+                            Debug.WriteLine($"_lastDocument is null: {_lastDocument == null}");
                             
                             // Always check if document has changed when materials are requested
                             // This ensures auto-refresh works even if page wasn't reloaded
-                            if (HasDocumentChanged())
+                            bool docChanged = HasDocumentChanged();
+                            Debug.WriteLine($"HasDocumentChanged returned: {docChanged}");
+                            
+                            if (docChanged || _lastDocument == null)
                             {
-                                Debug.WriteLine("Document changed when materials requested, refreshing");
+                                Debug.WriteLine("Document changed or not set when materials requested, refreshing");
                                 RefreshFromActiveDocument();
                             }
-                            // If no cached materials or document hasn't been set, refresh from active document
-                            else if (_cachedMaterials == null || _cachedMaterials.Count == 0 || _lastDocument == null)
+                            // If no cached materials, try to extract from active document
+                            else if (_cachedMaterials == null || _cachedMaterials.Count == 0)
                             {
                                 // Try to get active document and extract materials
                                 if (App._uiApplication != null)
@@ -767,15 +829,21 @@ namespace Materialdex
                         else if (type == "requestProjectInfo")
                         {
                             Debug.WriteLine("Project info requested from web");
+                            Debug.WriteLine($"_lastDocument is null: {_lastDocument == null}");
+                            
                             // Always check if document has changed when project info is requested
                             // This ensures auto-refresh works even if page wasn't reloaded
-                            if (HasDocumentChanged() || _lastDocument == null)
+                            bool docChanged = HasDocumentChanged();
+                            Debug.WriteLine($"HasDocumentChanged returned: {docChanged}");
+                            
+                            if (docChanged || _lastDocument == null)
                             {
                                 Debug.WriteLine("Document changed or not set when project info requested, refreshing");
                                 RefreshFromActiveDocument();
                             }
                             else
                             {
+                                Debug.WriteLine("Sending project info (no change detected)");
                                 SendProjectInfoToWebView();
                             }
                         }
