@@ -61,6 +61,7 @@ interface ProductRecommendation {
   doc_checklist: DocChecklist;
   distance_miles: number | null;
   confidence: number;
+  doc_search?: DocSearchResult; // Include doc_search for frontend display
   has_known_epd?: boolean;
   has_known_hpd?: boolean;
   has_known_declare?: boolean;
@@ -480,6 +481,20 @@ ${linksText}`,
     }
 
     return results.map((result, i) => {
+      // Skip results with missing required fields
+      if (!result.url || !result.title) {
+        return {
+          url: result.url || "",
+          title: result.title || "",
+          snippet: result.snippet || "",
+          category: "unknown" as const,
+          confidence: 0,
+          confidenceLevel: "general_page" as LinkConfidence,
+          reason: "Missing URL or title",
+          needsVerification: false,
+        };
+      }
+
       const cat = categories.find((c) => c.index === i + 1);
 
       let confidenceLevel: LinkConfidence = "general_page";
@@ -556,11 +571,14 @@ ${linksText}`,
   } catch (error) {
     console.error("Categorization error:", error);
     return results.map((r) => ({
-      ...r,
+      url: r.url || "",
+      title: r.title || "",
+      snippet: r.snippet || "",
       category: "unknown" as const,
       confidence: 0,
       confidenceLevel: "general_page" as LinkConfidence,
       reason: "Categorization failed",
+      needsVerification: false,
     }));
   }
 }
@@ -619,21 +637,33 @@ Search: ${query}`,
       const text = response.choices[0]?.message?.content || "";
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        const cleanedJson = jsonMatch[0]
-          .replace(/\}\s*\[\d+\]\s*,/g, "},")
-          .replace(/\}\s*\[\d+\]\s*\]/g, "}]")
-          .replace(/"\s*\[\d+\]\s*,/g, "\",")
-          .replace(/"\s*\[\d+\]\s*\}/g, "\"}");
-        const parsed = JSON.parse(cleanedJson);
-        const results = (parsed.results || [])
-          .filter((r: SearchResult) => r.url && r.url.startsWith("http"))
-          .filter((r: SearchResult) => !isFabricatedUrl(r.url));
+        // Clean up AI response - remove citation numbers like [1], [2] that break JSON
+        let cleanedJson = jsonMatch[0]
+          // Remove citation numbers in various positions
+          .replace(/\[\d+\]/g, "")
+          // Fix broken JSON from removed citations
+          .replace(/,\s*,/g, ",")
+          .replace(/,\s*\}/g, "}")
+          .replace(/,\s*\]/g, "]")
+          .replace(/\{\s*,/g, "{")
+          .replace(/\[\s*,/g, "[");
 
-        console.log(`[DOC-SEARCH] Found ${results.length} ${name} results`);
-        if (results.length > 0) {
-          onProgress?.(`Found ${results.length} ${name} page${results.length > 1 ? "s" : ""}`);
+        try {
+          const parsed = JSON.parse(cleanedJson);
+          const results = (parsed.results || [])
+            .filter((r: SearchResult) => r && r.url && r.url.startsWith("http"))
+            .filter((r: SearchResult) => r.title) // Ensure title exists
+            .filter((r: SearchResult) => !isFabricatedUrl(r.url));
+
+          console.log(`[DOC-SEARCH] Found ${results.length} ${name} results`);
+          if (results.length > 0) {
+            onProgress?.(`Found ${results.length} ${name} page${results.length > 1 ? "s" : ""}`);
+          }
+          return results;
+        } catch (parseError) {
+          console.log(`[DOC-SEARCH] JSON parse error for ${name}:`, parseError);
+          return [];
         }
-        return results;
       }
     } catch (e) {
       console.log(`[DOC-SEARCH] Error searching ${name}:`, e);
@@ -644,14 +674,17 @@ Search: ${query}`,
   const searchResults = await Promise.all(searchPromises);
   searchResults.forEach((results) => allResults.push(...results));
 
-  console.log(`[DOC-SEARCH] Total results: ${allResults.length}`);
-  onProgress?.(`Found ${allResults.length} total pages`);
+  // Filter out any results with missing fields
+  const validResults = allResults.filter((r) => r && r.url && r.title);
+  
+  console.log(`[DOC-SEARCH] Total results: ${validResults.length}`);
+  onProgress?.(`Found ${validResults.length} total pages`);
 
   // Categorize links using AI
-  console.log(`[DOC-SEARCH] Categorizing ${allResults.length} links...`);
-  onProgress?.(`Categorizing ${allResults.length} links...`);
+  console.log(`[DOC-SEARCH] Categorizing ${validResults.length} links...`);
+  onProgress?.(`Categorizing ${validResults.length} links...`);
 
-  let categorizedLinks = await categorizeLinks(allResults, productName, manufacturer, client);
+  let categorizedLinks = await categorizeLinks(validResults, productName, manufacturer, client);
 
   // Validate URLs in parallel
   console.log(`[DOC-SEARCH] Validating ${categorizedLinks.length} URLs...`);
@@ -873,6 +906,7 @@ export const scanMaterial = functions
           };
 
           let verifiedProductUrl: string | null = null;
+          let docSearch: DocSearchResult | undefined = undefined;
 
           if (perplexityKey && rec.product_label) {
             try {
@@ -883,19 +917,30 @@ export const scanMaterial = functions
                 sendProgress(`Product ${productNum}: ${message}`);
               };
 
-              const docSearch = await searchForDocumentation(
+              docSearch = await searchForDocumentation(
                 rec.product_label,
                 rec.manufacturer || null,
                 perplexityKey,
                 productProgressCallback
               );
 
+              // Log confidence values for debugging
+              if (docSearch.byType.epd.length > 0) {
+                console.log(`[SCAN] EPD links found: ${docSearch.byType.epd.length}`);
+                docSearch.byType.epd.forEach((link, idx) => {
+                  console.log(`[SCAN]   EPD ${idx + 1}: ${link.url} - confidence: ${link.confidence}, level: ${link.confidenceLevel}`);
+                });
+              }
+
               // Update checklist with best links (only high confidence)
               if (docSearch.byType.epd.length > 0) {
                 const sorted = docSearch.byType.epd.sort((a, b) => b.confidence - a.confidence);
                 const best = sorted[0];
+                console.log(`[SCAN] Best EPD: ${best.url} - confidence: ${best.confidence} (threshold: ${autoSelectThreshold})`);
                 if (best && best.confidence >= autoSelectThreshold) {
                   docChecklist.epd = {status: "verified", doc_url: best.url, registry_id: null};
+                } else {
+                  console.log(`[SCAN] EPD link below threshold, not auto-selecting`);
                 }
               }
               if (docSearch.byType.hpd.length > 0) {
@@ -966,6 +1011,7 @@ export const scanMaterial = functions
             doc_checklist: docChecklist,
             distance_miles: null,
             confidence: rec.confidence || 0.5,
+            doc_search: docSearch, // Include doc_search so frontend can display links
             has_known_epd: rec.has_known_epd,
             has_known_hpd: rec.has_known_hpd,
             has_known_declare: rec.has_known_declare,
