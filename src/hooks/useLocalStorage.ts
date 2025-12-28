@@ -25,6 +25,9 @@ export function useAppState() {
   const [currentProjectId, setCurrentProjectId] = useState<string | undefined>(
     typeof window !== 'undefined' ? getCurrentProjectId() : undefined
   );
+  // Track the project ID that was used when scannedMaterials were last set
+  // This ensures we don't preserve scannedMaterials from a different project
+  const [scannedMaterialsProjectId, setScannedMaterialsProjectId] = useState<string | undefined>(undefined);
 
   // Load state from localStorage on mount
   useEffect(() => {
@@ -32,6 +35,7 @@ export function useAppState() {
     const loaded = loadState(projectId);
     setState(loaded);
     setCurrentProjectId(projectId);
+    setScannedMaterialsProjectId(projectId); // Track initial project ID for scannedMaterials
     setIsLoaded(true);
   }, []);
 
@@ -56,6 +60,8 @@ export function useAppState() {
         // scannedMaterials come from loaded state (project-specific)
       }));
       setCurrentProjectId(newProjectId);
+      // Reset the tracked project ID for scannedMaterials
+      setScannedMaterialsProjectId(newProjectId);
     }
   }, [state.project?.projectId, currentProjectId, isLoaded]);
 
@@ -86,18 +92,36 @@ export function useAppState() {
 
   const setMaterials = useCallback((materials: InputMaterial[]) => {
     setState(prev => {
-      // When materials are set from Revit, only preserve scannedMaterials that match the new materials.
-      // The scannedMaterials in prev.state should already be project-specific from the loaded state
-      // when the project changed. Filter to match the new materials to ensure they remain project-specific.
+      const currentProjectId = prev.project?.projectId;
       const existingMaterialIds = new Set(materials.map(m => m.id));
       
-      // If previous materials list was empty (project just changed), only use scannedMaterials
-      // that match the new materials. This ensures we don't carry over scannedMaterials from
-      // a previous project even if material IDs happen to match.
-      // If previous materials existed, filter scannedMaterials to match new materials.
-      const preservedScannedMaterials = prev.materials.length === 0
-        ? prev.scannedMaterials.filter(sm => existingMaterialIds.has(sm.id))
-        : prev.scannedMaterials.filter(sm => existingMaterialIds.has(sm.id));
+      // When materials are set from Revit, only preserve scannedMaterials that match the new materials.
+      // CRITICAL: Only preserve scannedMaterials if they belong to the CURRENT project.
+      let preservedScannedMaterials: typeof prev.scannedMaterials;
+      
+      // Check if scannedMaterials belong to the current project
+      if (currentProjectId && currentProjectId === scannedMaterialsProjectId) {
+        // scannedMaterials are from the current project - filter to match new materials
+        preservedScannedMaterials = prev.scannedMaterials.filter(
+          sm => existingMaterialIds.has(sm.id)
+        );
+      } else if (currentProjectId) {
+        // Project changed - reload project-specific scannedMaterials from storage
+        // to ensure we have the correct ones for this project
+        const loadedState = loadState(currentProjectId);
+        // Filter loaded scannedMaterials to match new materials
+        preservedScannedMaterials = loadedState.scannedMaterials.filter(
+          sm => existingMaterialIds.has(sm.id)
+        );
+        // Update the tracked project ID
+        setScannedMaterialsProjectId(currentProjectId);
+        console.log(`Project changed when setting materials: ${scannedMaterialsProjectId} -> ${currentProjectId}, reloaded ${loadedState.scannedMaterials.length} scannedMaterials, filtered to ${preservedScannedMaterials.length}`);
+      } else {
+        // No project ID - filter normally
+        preservedScannedMaterials = prev.scannedMaterials.filter(
+          sm => existingMaterialIds.has(sm.id)
+        );
+      }
       
       return {
         ...prev,
@@ -105,7 +129,7 @@ export function useAppState() {
         scannedMaterials: preservedScannedMaterials,
       };
     });
-  }, []);
+  }, [scannedMaterialsProjectId]);
 
   // Scanned materials actions
   const setScannedMaterials = useCallback((scannedMaterials: ScannedMaterial[]) => {
