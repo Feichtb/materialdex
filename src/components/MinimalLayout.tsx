@@ -95,8 +95,11 @@ export default function MinimalLayout({
   }, [materials, selectedMaterialId]);
 
   // Get selected material and its scan results
-  const selectedMaterial = materials.find(m => m.id === selectedMaterialId);
-  const scannedResult = scannedMaterials.find(m => m.id === selectedMaterialId);
+  // Default to first material if none is selected or selected material doesn't exist
+  const selectedMaterial = selectedMaterialId 
+    ? materials.find(m => m.id === selectedMaterialId) || materials[0]
+    : materials[0];
+  const scannedResult = scannedMaterials.find(m => m.id === selectedMaterial?.id);
 
   // Get all saved products across all materials
   const savedProducts = scannedMaterials.flatMap(m => 
@@ -651,7 +654,7 @@ export default function MinimalLayout({
                 )}
               </div>
               <select
-                value={selectedMaterialId || ''}
+                value={selectedMaterialId || materials[0]?.id || ''}
                 onChange={(e) => {
                   setSelectedMaterialId(e.target.value);
                   setExpandedProduct(null);
