@@ -950,15 +950,16 @@ export const scanMaterial = onRequest(
 
         // STAGE 2: Search for documentation
         const perplexityKey = process.env.PERPLEXITY_API_KEY;
-        const recommendations: ProductRecommendation[] = [];
         const totalProducts = Math.min(sortedRecs.length, 3);
 
         // Auto-select threshold - only use links with high confidence
         const autoSelectThreshold = 0.8;
 
-        for (let i = 0; i < totalProducts; i++) {
-          const rec = sortedRecs[i];
-          const productNum = i + 1;
+        sendProgress(`Searching documentation for ${totalProducts} products concurrently...`);
+
+        // Process all products concurrently using Promise.all
+        const productPromises = sortedRecs.slice(0, totalProducts).map(async (rec, index) => {
+          const productNum = index + 1;
 
           sendProgress(`Product ${productNum} of ${totalProducts}: ${rec.product_label}`);
 
@@ -1055,17 +1056,17 @@ export const scanMaterial = onRequest(
               }
 
               if (foundDocs.length > 0) {
-                sendProgress(`Found verified: ${foundDocs.join(", ")}`);
+                sendProgress(`Product ${productNum} - Found verified: ${foundDocs.join(", ")}`);
               } else {
-                sendProgress("No high-confidence documentation found");
+                sendProgress(`Product ${productNum} - No high-confidence documentation found`);
               }
             } catch (error) {
               console.error(`[SCAN] Doc search failed for ${rec.product_label}:`, error);
-              sendProgress(`Error searching documentation`);
+              sendProgress(`Product ${productNum} - Error searching documentation`);
             }
           }
 
-          recommendations.push({
+          return {
             product_label: rec.product_label || "Unknown Product",
             manufacturer: rec.manufacturer || null,
             manufacturer_url: rec.manufacturer_url || null,
@@ -1079,8 +1080,13 @@ export const scanMaterial = onRequest(
             has_known_epd: rec.has_known_epd,
             has_known_hpd: rec.has_known_hpd,
             has_known_declare: rec.has_known_declare,
-          });
-        }
+          };
+        });
+
+        // Wait for all product searches to complete concurrently
+        const recommendations = await Promise.all(productPromises);
+        
+        sendProgress(`Completed documentation search for all ${totalProducts} products`);
 
         const result = {
           id: body.material.id,
