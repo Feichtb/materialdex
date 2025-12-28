@@ -1191,14 +1191,17 @@ export const scanMaterial = onRequest(
         // Wait for all product searches to complete, but handle cancellation
         const results = await Promise.allSettled(productPromises);
         
+        // Helper function to extract fulfilled values
+        const getFulfilledValues = <T>(results: PromiseSettledResult<T>[]): T[] => {
+          return results
+            .filter((r): r is PromiseFulfilledResult<T> => r.status === 'fulfilled')
+            .map(r => r.value);
+        };
+        
         // Check if connection was closed
         if (!isConnectionAlive()) {
           // Collect completed products (only those that finished successfully)
-          const completedProducts = results
-            .filter((r): r is PromiseFulfilledResult<typeof results[0] extends Promise<infer T> ? T : never> => 
-              r.status === 'fulfilled'
-            )
-            .map(r => r.value);
+          const completedProducts = getFulfilledValues(results);
           
           console.log(`[SCAN] Connection closed, returning ${completedProducts.length} completed products`);
           const partialResult = {
@@ -1214,11 +1217,7 @@ export const scanMaterial = onRequest(
         }
 
         // Collect successful results
-        const recommendations = results
-          .filter((r): r is PromiseFulfilledResult<typeof results[0] extends Promise<infer T> ? T : never> => 
-            r.status === 'fulfilled'
-          )
-          .map(r => r.value);
+        const recommendations = getFulfilledValues(results);
         
         // Mark all as complete
         for (let i = 0; i < recommendations.length; i++) {
