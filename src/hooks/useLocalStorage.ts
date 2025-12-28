@@ -46,9 +46,12 @@ export function useAppState() {
       console.log(`Project changed from ${currentProjectId} to ${newProjectId}, loading project-specific data`);
       const loaded = loadState(newProjectId);
       // Preserve settings from current state (settings are global, not project-specific)
+      // Use loaded scannedMaterials (project-specific) - don't preserve old project's scannedMaterials
       setState(prevState => ({
         ...loaded,
         settings: prevState.settings, // Keep current settings
+        // scannedMaterials should come from loaded state (project-specific)
+        // materials will be updated when Revit sends new materials
       }));
       setCurrentProjectId(newProjectId);
     }
@@ -81,8 +84,24 @@ export function useAppState() {
 
   const setMaterials = useCallback((materials: InputMaterial[]) => {
     setState(prev => {
-      // Preserve scannedMaterials - only remove ones for materials that no longer exist
+      // Check if this is a completely new set of materials (likely a project change)
+      // by comparing material IDs with current materials
+      const currentMaterialIds = new Set(prev.materials.map(m => m.id));
+      
+      // Check for overlap - if no materials match and we had materials before, this might be a new project
+      const hasOverlap = prev.materials.length > 0 && materials.length > 0 && 
+                         materials.some(m => currentMaterialIds.has(m.id));
+      
+      // When materials are set from Revit:
+      // - If there's overlap with previous materials, preserve scannedMaterials for matching materials
+      // - If no overlap AND we had materials before, this indicates a project change.
+      //   In this case, only preserve scannedMaterials that match the new materials.
+      //   The scannedMaterials in prev.state should already be project-specific from the loaded state,
+      //   so we just filter to match the new materials.
       const existingMaterialIds = new Set(materials.map(m => m.id));
+      
+      // Always filter scannedMaterials to only include ones for materials that exist in the new list
+      // This ensures scannedMaterials remain project-specific
       const preservedScannedMaterials = prev.scannedMaterials.filter(
         sm => existingMaterialIds.has(sm.id)
       );

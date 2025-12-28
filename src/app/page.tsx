@@ -46,6 +46,8 @@ export default function Home() {
         // Secondary sort: alphabetical when quantities are equal
         return a.name.localeCompare(b.name);
       });
+      // When setting materials from Revit, only preserve scannedMaterials that match
+      // the new materials. This ensures project-specific scannedMaterials are maintained.
       setMaterials(sortedMaterials);
     }
   }, [revitMaterials.materials, isLoaded, setMaterials, isRevitPlugin]);
