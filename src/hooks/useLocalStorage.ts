@@ -47,11 +47,13 @@ export function useAppState() {
       const loaded = loadState(newProjectId);
       // Preserve settings from current state (settings are global, not project-specific)
       // Use loaded scannedMaterials (project-specific) - don't preserve old project's scannedMaterials
+      // Clear materials temporarily - they'll be updated when Revit sends new materials
+      // This ensures scannedMaterials are truly project-specific even if material IDs match
       setState(prevState => ({
         ...loaded,
+        materials: [], // Clear materials - will be set when Revit sends them
         settings: prevState.settings, // Keep current settings
-        // scannedMaterials should come from loaded state (project-specific)
-        // materials will be updated when Revit sends new materials
+        // scannedMaterials come from loaded state (project-specific)
       }));
       setCurrentProjectId(newProjectId);
     }
@@ -84,27 +86,18 @@ export function useAppState() {
 
   const setMaterials = useCallback((materials: InputMaterial[]) => {
     setState(prev => {
-      // Check if this is a completely new set of materials (likely a project change)
-      // by comparing material IDs with current materials
-      const currentMaterialIds = new Set(prev.materials.map(m => m.id));
-      
-      // Check for overlap - if no materials match and we had materials before, this might be a new project
-      const hasOverlap = prev.materials.length > 0 && materials.length > 0 && 
-                         materials.some(m => currentMaterialIds.has(m.id));
-      
-      // When materials are set from Revit:
-      // - If there's overlap with previous materials, preserve scannedMaterials for matching materials
-      // - If no overlap AND we had materials before, this indicates a project change.
-      //   In this case, only preserve scannedMaterials that match the new materials.
-      //   The scannedMaterials in prev.state should already be project-specific from the loaded state,
-      //   so we just filter to match the new materials.
+      // When materials are set from Revit, only preserve scannedMaterials that match the new materials.
+      // The scannedMaterials in prev.state should already be project-specific from the loaded state
+      // when the project changed. Filter to match the new materials to ensure they remain project-specific.
       const existingMaterialIds = new Set(materials.map(m => m.id));
       
-      // Always filter scannedMaterials to only include ones for materials that exist in the new list
-      // This ensures scannedMaterials remain project-specific
-      const preservedScannedMaterials = prev.scannedMaterials.filter(
-        sm => existingMaterialIds.has(sm.id)
-      );
+      // If previous materials list was empty (project just changed), only use scannedMaterials
+      // that match the new materials. This ensures we don't carry over scannedMaterials from
+      // a previous project even if material IDs happen to match.
+      // If previous materials existed, filter scannedMaterials to match new materials.
+      const preservedScannedMaterials = prev.materials.length === 0
+        ? prev.scannedMaterials.filter(sm => existingMaterialIds.has(sm.id))
+        : prev.scannedMaterials.filter(sm => existingMaterialIds.has(sm.id));
       
       return {
         ...prev,

@@ -706,7 +706,8 @@ namespace Materialdex
                             Debug.WriteLine($"App._uiApplication is null: {App._uiApplication == null}");
                             Debug.WriteLine($"_cachedMaterials count: {_cachedMaterials?.Count ?? 0}");
                             
-                            // Check if document has changed - if so, refresh everything
+                            // Always check if document has changed when materials are requested
+                            // This ensures auto-refresh works even if page wasn't reloaded
                             if (HasDocumentChanged())
                             {
                                 Debug.WriteLine("Document changed when materials requested, refreshing");
@@ -785,7 +786,17 @@ namespace Materialdex
                         else if (type == "requestProjectInfo")
                         {
                             Debug.WriteLine("Project info requested from web");
-                            SendProjectInfoToWebView();
+                            // Check if document has changed when project info is requested
+                            // This ensures auto-refresh works even if page wasn't reloaded
+                            if (HasDocumentChanged())
+                            {
+                                Debug.WriteLine("Document changed when project info requested, refreshing");
+                                RefreshFromActiveDocument();
+                            }
+                            else
+                            {
+                                SendProjectInfoToWebView();
+                            }
                         }
                     }
                 }
