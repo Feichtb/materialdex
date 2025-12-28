@@ -330,7 +330,15 @@ export default function MinimalLayout({
       // Get existing product labels to avoid duplicates
       const existingProducts = scannedResult.recommendations.map(r => r.product_label.toLowerCase());
       
-      const response = await fetch('/api/scan-material', {
+      // Use Firebase Functions for production (longer timeout than Netlify's 30s limit)
+      const FIREBASE_SCAN_URL = 'https://us-central1-materialdex-677c3.cloudfunctions.net/scanMaterial';
+      const isLocalhost = typeof window !== 'undefined' && 
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+      const scanUrl = isLocalhost ? '/api/scan-material' : FIREBASE_SCAN_URL;
+      
+      console.log('[Materialdex] Find More URL:', scanUrl, 'isLocalhost:', isLocalhost);
+      
+      const response = await fetch(scanUrl, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
