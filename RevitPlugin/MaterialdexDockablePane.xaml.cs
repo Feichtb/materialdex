@@ -387,7 +387,7 @@ namespace Materialdex
         /// <summary>
         /// Checks if the WebView is initialized and ready.
         /// </summary>
-        public bool IsInitialized()
+        public bool IsWebViewInitialized()
         {
             return _isInitialized && WebView.CoreWebView2 != null;
         }
@@ -786,18 +786,21 @@ namespace Materialdex
                                                 Document doc = activeUIDoc.Document;
                                                 Debug.WriteLine($"Document title: {doc?.Title ?? "null"}");
                                                 
-                                                _lastDocument = doc;
-                                                _cachedMaterials = MaterialExtractor.ExtractMaterials(doc);
-                                                Debug.WriteLine($"Extracted {_cachedMaterials.Count} materials");
-                                                UpdateStatus($"Extracted {_cachedMaterials.Count} materials from model");
-                                                
-                                                // Also send project info when document is set
-                                                SendProjectInfoToWebView();
-                                            }
-                                            else
-                                            {
-                                                Debug.WriteLine("No active document - cannot extract materials");
-                                                UpdateStatus("Please open a Revit document first.");
+                                                if (doc != null)
+                                                {
+                                                    _lastDocument = doc;
+                                                    _cachedMaterials = MaterialExtractor.ExtractMaterials(doc);
+                                                    Debug.WriteLine($"Extracted {_cachedMaterials.Count} materials");
+                                                    UpdateStatus($"Extracted {_cachedMaterials.Count} materials from model");
+                                                    
+                                                    // Also send project info when document is set
+                                                    SendProjectInfoToWebView();
+                                                }
+                                                else
+                                                {
+                                                    Debug.WriteLine("No active document - cannot extract materials");
+                                                    UpdateStatus("Please open a Revit document first.");
+                                                }
                                             }
                                         }
                                         catch (Exception ex)

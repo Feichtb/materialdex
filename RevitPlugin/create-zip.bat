@@ -1,9 +1,9 @@
 @echo off
 setlocal enabledelayedexpansion
-REM Create ZIP file for Autodesk App Store submission
+REM Create ZIP file for GitHub Releases
 
 echo ========================================
-echo Creating ZIP package for App Store
+echo Creating ZIP package for release
 echo ========================================
 echo.
 
@@ -15,10 +15,10 @@ if not exist "Materialdex.bundle" (
     exit /b 1
 )
 
-REM Use version 1.0.0 (can be updated manually if needed)
-set VERSION=1.0.0
+REM Update this when bumping the release version
+set VERSION=2.0.0
 
-set ZIPFILE=Materialdex-v%VERSION%.zip
+set ZIPFILE=Materialdex-%VERSION%.zip
 
 echo Version: %VERSION%
 echo Creating: %ZIPFILE%
@@ -43,7 +43,7 @@ if %errorLevel% == 0 (
     echo Size:
     dir "%ZIPFILE%" | findstr "%ZIPFILE%"
     echo.
-    echo Ready for Autodesk App Store submission!
+    echo Ready to attach to GitHub release!
     echo.
 ) else (
     echo.

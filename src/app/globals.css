@@ -2,203 +2,103 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══ DESIGN TOKENS — warm parchment palette (matches marketing site) ═══ */
 :root {
-  --revit-primary: #0078d4;
-  --revit-secondary: #3E8E2A;
-  --revit-dark: #1e1e1e;
-  --revit-darker: #1e1e1e;
-  --revit-panel: #252526;
-  --revit-border: #3e3e42;
-  --revit-text: #cccccc;
-  --revit-accent: #569cd6;
-  --revit-success: #4ec9b0;
-  --revit-warning: #dcdcaa;
-  --revit-error: #f48771;
+  --revit-primary:   #8B5830;  /* amber — CTAs, labels              */
+  --revit-secondary: #3A6B28;  /* eco green                         */
+  --revit-dark:      #F0EDE7;  /* alt parchment bg                  */
+  --revit-darker:    #F7F5F0;  /* main parchment bg                 */
+  --revit-panel:     #FDFCFA;  /* card / panel bg                   */
+  --revit-border:    #DDD8CF;  /* warm rule                         */
+  --revit-text:      #1A1814;  /* dark ink                          */
+  --revit-accent:    #D4915E;  /* warm terracotta — decorative      */
+  --revit-success:   #3A6B28;  /* eco green — saved/verified        */
+  --revit-warning:   #D4915E;  /* amber warning                     */
+  --revit-error:     #B83020;  /* warm red                          */
 }
 
-/* Light theme variables */
+/* Light theme (Revit light mode) — same warm parchment palette */
 [data-theme="light"] {
-  --revit-primary: #0078d4;
+  --revit-primary:   #8B5830;
+  --revit-secondary: #3A6B28;
+  --revit-dark:      #F0EDE7;
+  --revit-darker:    #F7F5F0;
+  --revit-panel:     #FDFCFA;
+  --revit-border:    #DDD8CF;
+  --revit-text:      #1A1814;
+  --revit-accent:    #D4915E;
+  --revit-success:   #3A6B28;
+  --revit-warning:   #D4915E;
+  --revit-error:     #B83020;
+}
+
+/* Dark theme (Revit dark mode) — original VS Code dark palette */
+[data-theme="dark"] {
+  --revit-primary:   #0078d4;
   --revit-secondary: #3E8E2A;
-  --revit-dark: #f3f3f3;
-  --revit-darker: #ffffff;
-  --revit-panel: #ffffff;
-  --revit-border: #e1e1e1;
-  --revit-text: #323130;
-  --revit-accent: #0078d4;
-  --revit-success: #4ec9b0; /* Keep accent color */
-  --revit-warning: #ffaa44;
-  --revit-error: #d13438;
+  --revit-dark:      #1e1e1e;
+  --revit-darker:    #1e1e1e;
+  --revit-panel:     #252526;
+  --revit-border:    #3e3e42;
+  --revit-text:      #cccccc;
+  --revit-accent:    #569cd6;
+  --revit-success:   #4ec9b0;
+  --revit-warning:   #dcdcaa;
+  --revit-error:     #f48771;
 }
 
-/* Override Tailwind classes for light theme */
-[data-theme="light"] .bg-revit-darker {
-  background-color: var(--revit-darker) !important;
-}
+/* ─── Badge "sticker" treatment — dark text on light-colored bg in BOTH themes. ───
+   User directive: "every item circled should be dark text with a color background."
+   These !important rules lock in dark-on-light across light + dark themes so the
+   useRevitTheme dark-mode inline-style fixer and Tailwind -900/-50 classes can't
+   get overridden to pastel-on-dark. Treat the badges like printed stickers:
+   the same pill sits on the page regardless of ambient theme. */
 
-[data-theme="light"] .bg-revit-dark {
-  background-color: var(--revit-dark) !important;
-}
+.doc-badge-epd,
+.cat-header-epd     { color: #14532d !important; background-color: #dcfce7 !important; }
+.doc-badge-hpd,
+.cat-header-hpd     { color: #1e3a8a !important; background-color: #dbeafe !important; }
+.doc-badge-declare,
+.cat-header-declare { color: #4c1d95 !important; background-color: #f3e8ff !important; }
+.doc-badge-voc,
+.cat-header-voc     { color: #164e63 !important; background-color: #cffafe !important; }
+.doc-badge-product,
+.cat-header-product_page { color: #78350f !important; background-color: #fef9c3 !important; }
 
-[data-theme="light"] .bg-revit-panel {
-  background-color: var(--revit-panel) !important;
-}
+.cat-header-manufacturer       { color: #1f2937 !important; background-color: #e5e7eb !important; }
+.cat-header-wrong_manufacturer { color: #7f1d1d !important; background-color: #fee2e2 !important; }
 
-[data-theme="light"] .bg-revit-border {
-  background-color: var(--revit-border) !important;
-}
+/* Confidence badges — dark text on tinted bg */
+.conf-badge-direct_document    { color: #14532d !important; background-color: #dcfce7 !important; }
+.conf-badge-catalog_page       { color: #065f46 !important; background-color: #d1fae5 !important; }
+.conf-badge-product_line_doc   { color: #365314 !important; background-color: #ecfccb !important; }
+.conf-badge-sustainability_page { color: #713f12 !important; background-color: #fef9c3 !important; }
+.conf-badge-news_article       { color: #7c2d12 !important; background-color: #ffedd5 !important; }
+.conf-badge-general_page       { color: #1f2937 !important; background-color: #e5e7eb !important; }
+.conf-badge-wrong_manufacturer { color: #7f1d1d !important; background-color: #fee2e2 !important; }
 
-[data-theme="light"] .bg-revit-success {
-  background-color: var(--revit-success) !important;
-}
+/* Amber industry elements — dark amber text on warm cream bg (badges/headers) */
+.verify-badge,
+.industry-wide-header { color: #78350f !important; background-color: #fef3c7 !important; }
 
-/* Text color overrides for light theme */
-/* Base text color - this should catch .text-revit-text */
-[data-theme="light"] .text-revit-text {
-  color: var(--revit-text) !important;
-  --tw-text-opacity: 1;
-}
-
-/* Universal override for all text-revit-text variations */
-/* This catches classes like text-revit-text/70, text-revit-text/60, etc. */
-[data-theme="light"] [class*="text-revit-text"] {
-  /* Override Tailwind's opacity variable */
-  --tw-text-opacity: 1;
-}
-
-/* Specific opacity overrides using multiple selector strategies */
-/* Strategy 1: Direct class matching (Tailwind generates .text-revit-text\/70 in CSS) */
-[data-theme="light"] [class*="text-revit-text"][class*="80"]:not([class*="text-revit-text/80"]) {
-  color: rgba(50, 49, 48, 0.8) !important;
-}
-
-[data-theme="light"] [class*="text-revit-text"][class*="70"]:not([class*="text-revit-text/70"]) {
-  color: rgba(50, 49, 48, 0.7) !important;
-}
-
-[data-theme="light"] [class*="text-revit-text"][class*="60"]:not([class*="text-revit-text/60"]) {
-  color: rgba(50, 49, 48, 0.6) !important;
-}
-
-[data-theme="light"] [class*="text-revit-text"][class*="50"]:not([class*="text-revit-text/50"]) {
-  color: rgba(50, 49, 48, 0.5) !important;
-}
-
-[data-theme="light"] [class*="text-revit-text"][class*="40"]:not([class*="text-revit-text/40"]) {
-  color: rgba(50, 49, 48, 0.4) !important;
-}
-
-/* Strategy 2: Match classes containing slash patterns */
-[data-theme="light"] [class*="text-revit-text/"][class*="80"],
-[data-theme="light"] [class*="text-revit-text/"][class*="70"],
-[data-theme="light"] [class*="text-revit-text/"][class*="60"],
-[data-theme="light"] [class*="text-revit-text/"][class*="50"],
-[data-theme="light"] [class*="text-revit-text/"][class*="40"] {
-  opacity: 1 !important;
-}
-
-/* Force color for common patterns - most aggressive approach */
-[data-theme="light"] div[class*="text-revit-text"],
-[data-theme="light"] span[class*="text-revit-text"],
-[data-theme="light"] p[class*="text-revit-text"],
-[data-theme="light"] label[class*="text-revit-text"],
-[data-theme="light"] button[class*="text-revit-text"] {
-  /* Base fallback - will be overridden by more specific rules */
-  color: var(--revit-text) !important;
-}
-
-[data-theme="light"] .text-revit-success {
-  color: var(--revit-success) !important;
-}
-
-[data-theme="light"] .text-revit-primary {
-  color: var(--revit-primary) !important;
-}
-
-[data-theme="light"] .text-revit-error {
-  color: var(--revit-error) !important;
-}
-
-/* Border color overrides */
-[data-theme="light"] .border-revit-border {
-  border-color: var(--revit-border) !important;
-}
-
-[data-theme="light"] .border-revit-success {
-  border-color: var(--revit-success) !important;
-}
-
-[data-theme="light"] .border-revit-primary {
-  border-color: var(--revit-primary) !important;
-}
-
-/* Icon colors - ensure they're visible in light mode */
-[data-theme="light"] svg {
-  color: inherit;
-}
-
-/* Override icon colors that use text-revit-text */
-[data-theme="light"] svg[class*="text-revit-text"] {
-  color: inherit !important;
-}
-
-[data-theme="light"] [class*="text-revit-text"][class*="/60"] svg,
-[data-theme="light"] svg[class*="text-revit-text"][class*="/60"] {
-  color: rgba(50, 49, 48, 0.6) !important;
-}
-
-[data-theme="light"] [class*="text-revit-text"][class*="/50"] svg,
-[data-theme="light"] svg[class*="text-revit-text"][class*="/50"] {
-  color: rgba(50, 49, 48, 0.5) !important;
-}
-
-/* Doc type colors - adjust for light mode readability */
-[data-theme="light"] .text-green-400 {
-  color: #16a34a !important; /* Darker green for light mode */
-}
-
-[data-theme="light"] .text-blue-400 {
-  color: #2563eb !important; /* Darker blue for light mode */
-}
-
-[data-theme="light"] .text-purple-400 {
-  color: #9333ea !important; /* Darker purple for light mode */
-}
-
-[data-theme="light"] .text-cyan-400 {
-  color: #0891b2 !important; /* Darker cyan for light mode */
-}
-
-[data-theme="light"] .text-yellow-400 {
-  color: #ca8a04 !important; /* Darker yellow for light mode */
-}
-
-/* Select dropdown text */
-[data-theme="light"] select,
-[data-theme="light"] select option {
-  color: var(--revit-text) !important;
-  background-color: var(--revit-dark) !important;
-}
-
-[data-theme="light"] body {
-  background-color: var(--revit-darker) !important;
-  color: var(--revit-text) !important;
-}
+/* Inline text/icon — darken amber text, no sticker bg */
+.industry-issuer,
+.industry-link { color: #78350f !important; }
 
 * {
   box-sizing: border-box;
 }
 
 html {
-  color-scheme: dark;
-}
-
-[data-theme="light"] {
   color-scheme: light;
 }
 
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: Georgia, 'Times New Roman', serif;
   background-color: var(--revit-darker);
   color: var(--revit-text);
   margin: 0;
@@ -209,8 +109,8 @@ body {
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -219,20 +119,18 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: var(--revit-border);
-  border-radius: 5px;
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--revit-text);
-  opacity: 0.5;
+  background: rgba(26,24,20,0.3);
 }
 
-[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
-  background: var(--revit-text);
-  opacity: 0.3;
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #6e6e72;
 }
 
-/* Input styling */
+/* Input / select styling */
 input, textarea, select {
   background-color: var(--revit-dark);
   border: 1px solid var(--revit-border);
@@ -246,7 +144,13 @@ input, textarea, select {
 input:focus, textarea:focus, select:focus {
   outline: none;
   border-color: var(--revit-primary);
-  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+  box-shadow: 0 0 0 2px rgba(139,88,48,0.15);
+}
+
+[data-theme="dark"] input:focus,
+[data-theme="dark"] textarea:focus,
+[data-theme="dark"] select:focus {
+  box-shadow: 0 0 0 2px rgba(0,120,212,0.2);
 }
 
 input:disabled, textarea:disabled, select:disabled {
@@ -288,17 +192,17 @@ th {
 }
 
 tr:hover {
-  background-color: rgba(255, 255, 255, 0.03);
+  background-color: rgba(26,24,20,0.03);
+}
+
+[data-theme="dark"] tr:hover {
+  background-color: rgba(255,255,255,0.03);
 }
 
 /* Animation */
 @keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
 }
 
 .animate-pulse {
@@ -306,12 +210,8 @@ tr:hover {
 }
 
 @keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 
 .animate-spin {
@@ -346,28 +246,28 @@ tr:hover {
 }
 
 .badge-verified {
-  background-color: rgba(78, 201, 176, 0.2);
+  background-color: rgba(58,107,40,0.15);
   color: var(--revit-success);
 }
 
 .badge-unverified {
-  background-color: rgba(220, 220, 170, 0.2);
+  background-color: rgba(212,145,94,0.15);
   color: var(--revit-warning);
 }
 
 .badge-user-provided {
-  background-color: rgba(86, 156, 214, 0.2);
+  background-color: rgba(212,145,94,0.15);
   color: var(--revit-accent);
 }
 
 .badge-needs-link {
-  background-color: rgba(241, 76, 76, 0.2);
+  background-color: rgba(184,48,32,0.15);
   color: var(--revit-error);
 }
 
 /* Confidence indicator */
 .confidence-bar {
-  height: 4px;
+  height: 3px;
   background-color: var(--revit-border);
   border-radius: 2px;
   overflow: hidden;
@@ -379,15 +279,6 @@ tr:hover {
   transition: width 0.3s ease;
 }
 
-.confidence-high {
-  background-color: var(--revit-success);
-}
-
-.confidence-medium {
-  background-color: var(--revit-warning);
-}
-
-.confidence-low {
-  background-color: var(--revit-error);
-}
-
+.confidence-high   { background-color: var(--revit-success); }
+.confidence-medium { background-color: var(--revit-warning); }
+.confidence-low    { background-color: var(--revit-error); }

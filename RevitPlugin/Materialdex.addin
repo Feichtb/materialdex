@@ -2,7 +2,7 @@
 <RevitAddIns>
   <AddIn Type="Application">
     <Name>Materialdex</Name>
-    <Assembly>Materialdex\Materialdex.dll</Assembly>
+    <Assembly>Materialdex.dll</Assembly>
     <FullClassName>Materialdex.App</FullClassName>
     <ClientId>E8F5C9A2-3B7D-4E6F-8A1C-9D2E3F4B5C6A</ClientId>
     <VendorId>Materialdex</VendorId>

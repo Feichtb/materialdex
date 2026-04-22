@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getOpenAIClient, getPerplexityClient, PRODUCT_SEARCH_PROMPT, buildProductSearchPrompt } from '@/lib/openai';
+import { getOpenAIClient, getPerplexityClientWithKey, PRODUCT_SEARCH_PROMPT, buildProductSearchPrompt } from '@/lib/openai';
 import { searchForDocumentation, DocSearchResult } from '@/lib/docSearch';
 import { ProductRecommendation, DocStatus, DocChecklist } from '@/types';
 
@@ -19,8 +19,11 @@ interface SingleScanRequest {
     model: string;
     conservativeMode: boolean;
     useWebSearch: boolean;
+    docSearchProvider?: 'perplexity' | 'perplexity-v2' | 'exa';
   };
   excludeProducts?: string[]; // Product labels to exclude (for finding more materials)
+  userApiKey?: string;        // User's own Perplexity API key (BYOK)
+  deviceId?: string;          // Device identifier for usage tracking
 }
 
 // Extended recommendation with search results for debugging
@@ -54,7 +57,7 @@ interface AIResponse {
 
 // Progress update type
 interface ProgressUpdate {
-  type: 'progress' | 'complete' | 'error';
+  type: 'progress' | 'complete' | 'cancelled' | 'error';
   message: string;
   data?: any;
 }
@@ -67,12 +70,18 @@ export async function POST(request: NextRequest) {
     
     if (!body.project || !body.material) {
       console.error('[scan-material] Invalid request: missing project or material');
-      console.error('[scan-material] Project:', body.project);
-      console.error('[scan-material] Material:', body.material);
       return NextResponse.json(
         { error: 'Invalid request: project and material are required' },
         { status: 400 }
       );
+    }
+
+    // Validate user API key if provided
+    if (body.userApiKey !== undefined) {
+      if (typeof body.userApiKey !== 'string' || body.userApiKey.trim().length < 20 || body.userApiKey.length > 200) {
+        return NextResponse.json({ error: 'Invalid API key format' }, { status: 400 });
+      }
+      body.userApiKey = body.userApiKey.trim();
     }
 
     // Always use streaming for progress updates
@@ -90,13 +99,13 @@ export async function POST(request: NextRequest) {
     
     if (errorMessage.includes('OPENAI_API_KEY')) {
       return NextResponse.json(
-        { error: 'OpenAI API key is not configured. Add OPENAI_API_KEY to .env.local' },
+        { error: 'OpenAI API key is not configured' },
         { status: 500 }
       );
     }
     if (errorMessage.includes('PERPLEXITY_API_KEY')) {
       return NextResponse.json(
-        { error: 'Perplexity API key is not configured. Add PERPLEXITY_API_KEY to .env.local' },
+        { error: 'Perplexity API key is not configured' },
         { status: 500 }
       );
     }
@@ -209,10 +218,27 @@ async function streamScanProgress(body: SingleScanRequest) {
       try {
         const model = body.settings?.model || 'sonar-pro';
         const conservativeMode = body.settings?.conservativeMode || false;
-        
+        const docSearchProvider = body.settings?.docSearchProvider || 'perplexity';
+        const exaApiKey = process.env.EXA_API_KEY;
+
+        // Resolve the Perplexity key: user-supplied BYOK takes precedence over server env key
+        const perplexityApiKey = (body.userApiKey && body.userApiKey.length > 0)
+          ? body.userApiKey
+          : process.env.PERPLEXITY_API_KEY;
+
+        if (!perplexityApiKey && model.startsWith('sonar')) {
+          sendError('No Perplexity API key available. Add your key in the app settings.');
+          return;
+        }
+
+        // Cost accumulator for this scan
+        let totalCostUsd = 0;
+        let stage1InputTokens = 0;
+        let stage1OutputTokens = 0;
+
         // Log scan start for debugging
         console.log(`[scan-material] Starting scan for material: ${body.material.name} (${body.material.id})`);
-        console.log(`[scan-material] Model: ${model}, Conservative: ${conservativeMode}`);
+        console.log(`[scan-material] Model: ${model}, Conservative: ${conservativeMode}, DocProvider: ${docSearchProvider}`);
         console.log(`[scan-material] Project: ${body.project.name}, ZIP: ${body.project.zip}`);
 
         // STAGE 1: Get product recommendations (preferring documented products)
@@ -228,8 +254,8 @@ async function streamScanProgress(body: SingleScanRequest) {
         let responseText: string;
 
         if (model.startsWith('sonar')) {
-          const perplexity = getPerplexityClient();
-          
+          const perplexity = getPerplexityClientWithKey(perplexityApiKey!);
+
           const response = await perplexity.chat.completions.create({
             model: model,
             messages: [
@@ -240,6 +266,19 @@ async function streamScanProgress(body: SingleScanRequest) {
           });
 
           responseText = response.choices[0]?.message?.content || '';
+
+          // Track Stage 1 cost (sonar-pro product recommendation call)
+          const usage = (response as any).usage;
+          if (usage) {
+            stage1InputTokens = usage.prompt_tokens ?? 0;
+            stage1OutputTokens = usage.completion_tokens ?? 0;
+            if (usage.total_cost != null) {
+              totalCostUsd += usage.total_cost;
+            } else {
+              const rate = model === 'sonar-pro' ? { input: 3, output: 15 } : { input: 1, output: 1 };
+              totalCostUsd += (stage1InputTokens / 1_000_000) * rate.input + (stage1OutputTokens / 1_000_000) * rate.output;
+            }
+          }
         } else {
           const openai = getOpenAIClient();
           
@@ -299,7 +338,7 @@ async function streamScanProgress(body: SingleScanRequest) {
 
         // STAGE 2: Search for documentation for each product
         // Run SEQUENTIALLY with delay to avoid rate limiting
-        const perplexityKey = process.env.PERPLEXITY_API_KEY;
+        const perplexityKey = perplexityApiKey;
         const recommendations: ExtendedRecommendation[] = [];
         const totalProducts = Math.min(sortedRecs.length, 3);
         
@@ -387,8 +426,15 @@ async function streamScanProgress(body: SingleScanRequest) {
                 rec.product_label,
                 rec.manufacturer || null,
                 perplexityKey,
-                productProgressCallback
+                productProgressCallback,
+                docSearchProvider,
+                exaApiKey,
               );
+
+              // Accumulate doc search costs
+              if (docSearch.costSummary) {
+                totalCostUsd += docSearch.costSummary.estimatedUsd;
+              }
               
               // Check if stream closed during search
               if (streamClosed) {
@@ -505,15 +551,6 @@ async function streamScanProgress(body: SingleScanRequest) {
               }
             }
             
-            // Fallback: any valid link that's not wrong_manufacturer or unknown
-            if (!verifiedProductUrl && docSearch.categorizedLinks.length > 0) {
-              const validLinks = docSearch.categorizedLinks
-                .filter(l => l.category !== 'wrong_manufacturer' && l.category !== 'unknown')
-                .sort((a, b) => b.confidence - a.confidence);
-              if (validLinks.length > 0) {
-                verifiedProductUrl = validLinks[0].url;
-              }
-            }
           }
 
           recommendations.push({
@@ -560,7 +597,13 @@ async function streamScanProgress(body: SingleScanRequest) {
 
         console.log(`[scan-material] Scan complete for material: ${body.material.name}`);
         console.log(`[scan-material] Returning ${sortedRecommendations.length} recommendations`);
-        sendComplete(result);
+        console.log(`[scan-material] ====== COST SUMMARY ======`);
+        console.log(`[scan-material] Provider: ${docSearchProvider}`);
+        console.log(`[scan-material] Stage 1 (product recs): ${stage1InputTokens} in / ${stage1OutputTokens} out tokens`);
+        console.log(`[scan-material] Total cost: $${totalCostUsd.toFixed(5)}`);
+        console.log(`[scan-material] ==========================`);
+
+        sendComplete({ ...result, costUsd: totalCostUsd, docSearchProvider });
       } catch (error) {
         // Log full error details for Netlify debugging
         console.error('[scan-material] Scan error occurred');
@@ -582,10 +625,10 @@ async function streamScanProgress(body: SingleScanRequest) {
         // Send user-friendly error message
         if (errorMessage.includes('OPENAI_API_KEY')) {
           console.error('[scan-material] OpenAI API key missing');
-          sendError('OpenAI API key is not configured. Add OPENAI_API_KEY to .env.local');
+          sendError('OpenAI API key is not configured on the server.');
         } else if (errorMessage.includes('PERPLEXITY_API_KEY')) {
           console.error('[scan-material] Perplexity API key missing');
-          sendError('Perplexity API key is not configured. Add PERPLEXITY_API_KEY to .env.local');
+          sendError('Perplexity API key is not configured on the server.');
         } else {
           // Include error message in response for debugging
           const detailedError = process.env.NODE_ENV === 'production' 

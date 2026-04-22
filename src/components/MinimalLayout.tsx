@@ -43,13 +43,15 @@ interface MinimalLayoutProps {
 
 type View = 'scan' | 'library';
 
-// Doc type display config
+const CUSTOM_MATERIAL_ID = '__custom__';
+
+// Doc type display config — -900 text on -50 bg passes WCAG AA on warm parchment
 const DOC_TYPE_CONFIG = {
-  epd: { label: 'EPD', fullLabel: 'Environmental Product Declaration', color: 'text-green-400', bgColor: 'bg-green-500/20' },
-  hpd: { label: 'HPD', fullLabel: 'Health Product Declaration', color: 'text-blue-400', bgColor: 'bg-blue-500/20' },
-  declare: { label: 'Declare', fullLabel: 'Declare Label', color: 'text-purple-400', bgColor: 'bg-purple-500/20' },
-  voc: { label: 'VOC', fullLabel: 'VOC Certification', color: 'text-cyan-400', bgColor: 'bg-cyan-500/20' },
-  product_page: { label: 'Product', fullLabel: 'Product Page', color: 'text-yellow-400', bgColor: 'bg-yellow-500/20' },
+  epd:          { label: 'EPD',     fullLabel: 'Environmental Product Declaration', color: 'text-green-900 doc-badge-epd',     bgColor: 'bg-green-50 doc-badge-epd' },
+  hpd:          { label: 'HPD',     fullLabel: 'Health Product Declaration',        color: 'text-blue-900 doc-badge-hpd',      bgColor: 'bg-blue-50 doc-badge-hpd' },
+  declare:      { label: 'Declare', fullLabel: 'Declare Label',                     color: 'text-purple-900 doc-badge-declare', bgColor: 'bg-purple-50 doc-badge-declare' },
+  voc:          { label: 'VOC',     fullLabel: 'VOC Certification',                 color: 'text-cyan-900 doc-badge-voc',       bgColor: 'bg-cyan-50 doc-badge-voc' },
+  product_page: { label: 'Product', fullLabel: 'Product Page',                      color: 'text-amber-900 doc-badge-product',  bgColor: 'bg-amber-50 doc-badge-product' },
 };
 
 export default function MinimalLayout({
@@ -78,16 +80,68 @@ export default function MinimalLayout({
   const [productStatuses, setProductStatuses] = useState<Array<{productNum: number; productName: string; status: string}>>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [isFindingMore, setIsFindingMore] = useState(false);
+  const [customMaterialName, setCustomMaterialName] = useState('');
+  const [lastScannedCustomName, setLastScannedCustomName] = useState('');
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [completedProducts, setCompletedProducts] = useState<Array<{productNum: number; productName: string; status: string}>>([]);
+
+  // Usage tracking
+  const [deviceId, setDeviceId] = useState<string>('');
+  const [userApiKey, setUserApiKey] = useState<string>('');
+  const [freeScansRemaining, setFreeScansRemaining] = useState<number | null>(null);
+
+  // Initialize device ID and user API key from localStorage on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let id = localStorage.getItem('materialdex_device_id');
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem('materialdex_device_id', id);
+    }
+    setDeviceId(id);
+    const savedKey = localStorage.getItem('materialdex_user_api_key') || '';
+    setUserApiKey(savedKey);
+    // Only check usage if user doesn't have their own key
+    if (!savedKey) {
+      fetch(`/api/usage?deviceId=${encodeURIComponent(id)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data) setFreeScansRemaining(data.remaining); })
+        .catch(() => {});
+    }
+  }, []);
+
+  const handleUserApiKeyChange = (key: string) => {
+    setUserApiKey(key);
+    if (typeof window !== 'undefined') {
+      if (key) {
+        localStorage.setItem('materialdex_user_api_key', key);
+      } else {
+        localStorage.removeItem('materialdex_user_api_key');
+      }
+    }
+  };
+
+  // Increment free scan count after a successful free-tier scan
+  const trackFreeScanUsed = async (id: string) => {
+    try {
+      const res = await fetch('/api/usage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId: id }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFreeScansRemaining(data.remaining);
+      }
+    } catch {}
+  };
 
   // Check if running in Revit plugin
   const isRevitPlugin = typeof window !== 'undefined' && window.revitBridge?.isRevitPlugin;
 
-  // Auto-select first material
+  // Auto-select first material (skip if user has chosen custom search mode)
   useEffect(() => {
-    if (materials.length > 0) {
-      // If no material is selected, or the selected material no longer exists, select the first one
+    if (materials.length > 0 && selectedMaterialId !== CUSTOM_MATERIAL_ID) {
       if (!selectedMaterialId || !materials.find(m => m.id === selectedMaterialId)) {
         setSelectedMaterialId(materials[0].id);
       }
@@ -95,11 +149,18 @@ export default function MinimalLayout({
   }, [materials, selectedMaterialId]);
 
   // Get selected material and its scan results
-  // Default to first material if none is selected or selected material doesn't exist
-  const selectedMaterial = selectedMaterialId 
-    ? materials.find(m => m.id === selectedMaterialId) || materials[0]
-    : materials[0];
-  const scannedResult = scannedMaterials.find(m => m.id === selectedMaterial?.id);
+  const isCustomMode = selectedMaterialId === CUSTOM_MATERIAL_ID;
+  const customMaterial: InputMaterial | undefined = isCustomMode && customMaterialName.trim()
+    ? { id: CUSTOM_MATERIAL_ID, name: customMaterialName.trim(), qty: 0, unit: 'unknown' }
+    : undefined;
+  const selectedMaterial = isCustomMode
+    ? customMaterial
+    : (selectedMaterialId ? materials.find(m => m.id === selectedMaterialId) : undefined) || materials[0];
+  const scannedResult = (() => {
+    const r = scannedMaterials.find(m => m.id === selectedMaterial?.id);
+    if (isCustomMode && r && lastScannedCustomName !== customMaterialName.trim()) return undefined;
+    return r;
+  })();
 
   // Get all saved products across all materials
   const savedProducts = scannedMaterials.flatMap(m => 
@@ -135,37 +196,53 @@ export default function MinimalLayout({
   // Scan single material with progress updates
   const handleScan = async () => {
     if (!selectedMaterial) return;
-    
+
+    // If free scans exhausted and no user key, open settings to prompt key entry
+    if (freeScansRemaining === 0 && !userApiKey) {
+      setShowSettings(true);
+      return;
+    }
+
+    if (isCustomMode) setLastScannedCustomName(customMaterialName.trim());
     setIsScanning(true);
     setScanError(null);
     setScanProgress(['Starting scan...']);
     setProductStatuses([]);
     setCompletedProducts([]);
-    
     // Create abort controller for cancellation
     const controller = new AbortController();
     setAbortController(controller);
-    
+
+    const isFreeScan = !userApiKey;
+    let scanResult: any = null;
+
     try {
-      // Use Firebase Functions for production (longer timeout than Netlify's 30s limit)
+      // User key scans go through Netlify API route (supports BYOK).
+      // Free scans go through Firebase Functions which handle longer timeouts.
       const FIREBASE_SCAN_URL = 'https://us-central1-materialdex-677c3.cloudfunctions.net/scanMaterial';
-      const isLocalhost = typeof window !== 'undefined' && 
+      const isLocalhost = typeof window !== 'undefined' &&
         (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-      const scanUrl = isLocalhost ? '/api/scan-material' : FIREBASE_SCAN_URL;
-      
-      console.log('[Materialdex] Scan URL:', scanUrl, 'isLocalhost:', isLocalhost);
-      
+      const scanUrl = userApiKey
+        ? '/api/scan-material'
+        : (isLocalhost ? '/api/scan-material' : FIREBASE_SCAN_URL);
+
+      console.log('[Materialdex] Scan URL:', scanUrl, 'isLocalhost:', isLocalhost, 'BYOK:', !!userApiKey);
+
+      const requestBody: Record<string, unknown> = {
+        material: selectedMaterial,
+        project,
+        settings,
+        deviceId,
+      };
+      if (userApiKey) requestBody.userApiKey = userApiKey;
+
       const response = await fetch(scanUrl, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Accept': 'text/event-stream',
         },
-        body: JSON.stringify({
-          material: selectedMaterial,
-          project,
-          settings,
-        }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
 
@@ -178,7 +255,6 @@ export default function MinimalLayout({
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let result: any = null;
       let partialRecommendations: any[] = [];
 
       if (!reader) {
@@ -230,13 +306,14 @@ export default function MinimalLayout({
                   partialRecommendations.push(data.product);
                 }
               } else if (data.type === 'complete') {
-                result = data.data;
+                scanResult = data.data;
+
                 setScanProgress([]);
                 setProductStatuses([]);
               } else if (data.type === 'cancelled') {
                 // Backend detected cancellation and sent partial results
                 if (data.data && data.data.recommendations) {
-                  result = data.data;
+                  scanResult = data.data;
                   setScanProgress([`Scan cancelled. ${data.data.recommendations.length} product(s) completed.`]);
                 }
               } else if (data.type === 'error') {
@@ -250,14 +327,17 @@ export default function MinimalLayout({
         }
       }
 
-      if (result) {
-        onSingleScanComplete(result);
+      if (scanResult) {
+        onSingleScanComplete(scanResult);
         setExpandedProduct(null);
+        if (isFreeScan && deviceId) trackFreeScanUsed(deviceId);
       } else if (partialRecommendations.length > 0 && selectedMaterial) {
         // Create partial result from completed products
         const partialResult = {
           id: selectedMaterial.id,
           name: selectedMaterial.name,
+          qty: selectedMaterial.qty,
+          unit: selectedMaterial.unit,
           normalized_category: 'Other',
           category_confidence: 0.5,
           notes_for_user: `Partial scan results (${partialRecommendations.length} of ${productStatuses.length} products completed)`,
@@ -280,7 +360,7 @@ export default function MinimalLayout({
         console.log('[Materialdex] Scan cancelled by user');
         
         // If we already have a result from the cancelled event, it's already handled above
-        if (!result) {
+        if (!scanResult) {
           // The backend might have sent a cancelled event, but if connection closed too quickly,
           // we won't have received it. In that case, we can't get the actual product data,
           // so we just show a message
@@ -375,7 +455,7 @@ export default function MinimalLayout({
     if (links.length === 0) {
       return (
         <div className="py-1">
-          <div className={`text-xs font-medium ${config.color} mb-1`}>{config.label}</div>
+          <div className={`text-xs font-medium inline-block px-2 py-0.5 rounded mb-1 ${config.bgColor} ${config.color}`}>{config.label}</div>
           <div className="text-[10px] text-revit-text/50 flex items-center gap-1">
             <FileQuestion className="w-3 h-3" />
             No links found
@@ -383,10 +463,10 @@ export default function MinimalLayout({
         </div>
       );
     }
-    
+
     return (
       <div className="py-1">
-        <div className={`text-xs font-medium ${config.color} mb-1`}>
+        <div className={`text-xs font-medium inline-block px-2 py-0.5 rounded mb-1 ${config.bgColor} ${config.color}`}>
           {config.label} ({links.length} link{links.length !== 1 ? 's' : ''})
         </div>
         <div className="space-y-1">
@@ -417,38 +497,45 @@ export default function MinimalLayout({
   // Handle finding more materials (avoiding duplicates)
   const handleFindMoreMaterials = async () => {
     if (!selectedMaterial || !scannedResult) return;
-    
+
+    if (freeScansRemaining === 0 && !userApiKey) {
+      setShowSettings(true);
+      return;
+    }
+
     setIsFindingMore(true);
     setScanError(null);
-    
+
+    const isFreeScan = !userApiKey;
+
     try {
-      // Get existing product labels to avoid duplicates
       const existingProducts = scannedResult.recommendations.map(r => r.product_label.toLowerCase());
-      
-      // Use Firebase Functions for production (longer timeout than Netlify's 30s limit)
+
       const FIREBASE_SCAN_URL = 'https://us-central1-materialdex-677c3.cloudfunctions.net/scanMaterial';
-      const isLocalhost = typeof window !== 'undefined' && 
+      const isLocalhost = typeof window !== 'undefined' &&
         (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-      const scanUrl = isLocalhost ? '/api/scan-material' : FIREBASE_SCAN_URL;
-      
-      console.log('[Materialdex] Find More URL:', scanUrl, 'isLocalhost:', isLocalhost);
-      console.log('[Materialdex] Request payload:', {
-        material: selectedMaterial.name,
-        excludeProducts: existingProducts.length,
-      });
-      
+      const scanUrl = userApiKey
+        ? '/api/scan-material'
+        : (isLocalhost ? '/api/scan-material' : FIREBASE_SCAN_URL);
+
+      console.log('[Materialdex] Find More URL:', scanUrl);
+
+      const requestBody: Record<string, unknown> = {
+        material: selectedMaterial,
+        project,
+        settings,
+        excludeProducts: existingProducts,
+        deviceId,
+      };
+      if (userApiKey) requestBody.userApiKey = userApiKey;
+
       const response = await fetch(scanUrl, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Accept': 'text/event-stream',
         },
-        body: JSON.stringify({
-          material: selectedMaterial,
-          project,
-          settings,
-          excludeProducts: existingProducts, // Pass existing products to avoid duplicates
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const contentType = response.headers.get('Content-Type') || '';
@@ -549,6 +636,7 @@ export default function MinimalLayout({
       
       onSingleScanComplete(updatedResult);
       setExpandedProduct(null);
+      if (isFreeScan && deviceId) trackFreeScanUsed(deviceId);
     } catch (error) {
       setScanError(error instanceof Error ? error.message : 'Failed to find more materials');
     } finally {
@@ -558,14 +646,13 @@ export default function MinimalLayout({
 
   return (
     <div className="h-full flex flex-col bg-revit-darker">
-      {/* Header - Simplified with refresh and settings */}
+      {/* Header */}
       <div className="px-4 py-2.5 bg-revit-panel border-b border-revit-border flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-revit-success">Materialdex</span>
+          <span className="text-sm font-serif italic text-revit-primary tracking-wide">Materialdex</span>
           {project.name && project.name !== 'New Construction Project' && (
-            <span className="text-xs text-revit-text/60">
-              • {project.name}
-              {project.zip && ` • ${project.zip}`}
+            <span className="text-[10px] uppercase tracking-widest text-revit-text/40">
+              {project.name}{project.zip && ` · ${project.zip}`}
             </span>
           )}
         </div>
@@ -591,31 +678,31 @@ export default function MinimalLayout({
         </div>
       </div>
 
-      {/* View Toggle - Revit 2026 style tabs */}
+      {/* View Toggle — tabs */}
       <div className="flex border-b border-revit-border bg-revit-dark">
         <button
           onClick={() => setView('scan')}
-          className={`flex-1 px-4 py-2.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors ${
+          className={`flex-1 px-4 py-2.5 text-[10px] uppercase tracking-widest flex items-center justify-center gap-1.5 transition-colors ${
             view === 'scan'
-              ? 'bg-revit-panel text-revit-text border-b-2 border-revit-success'
-              : 'text-revit-text/60 hover:text-revit-text hover:bg-revit-panel/50'
+              ? 'bg-revit-panel text-revit-primary border-b-2 border-revit-primary'
+              : 'text-revit-text/50 hover:text-revit-text hover:bg-revit-panel/60'
           }`}
         >
-          <Search className="w-3.5 h-3.5" />
+          <Search className="w-3 h-3" />
           Scan
         </button>
         <button
           onClick={() => setView('library')}
-          className={`flex-1 px-4 py-2.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors ${
+          className={`flex-1 px-4 py-2.5 text-[10px] uppercase tracking-widest flex items-center justify-center gap-1.5 transition-colors ${
             view === 'library'
-              ? 'bg-revit-panel text-revit-text border-b-2 border-revit-success'
-              : 'text-revit-text/60 hover:text-revit-text hover:bg-revit-panel/50'
+              ? 'bg-revit-panel text-revit-primary border-b-2 border-revit-primary'
+              : 'text-revit-text/50 hover:text-revit-text hover:bg-revit-panel/60'
           }`}
         >
-          <Library className="w-3.5 h-3.5" />
+          <Library className="w-3 h-3" />
           Library
           {savedProducts.length > 0 && (
-            <span className="bg-revit-success text-revit-darker text-[10px] px-1.5 py-0.5 rounded font-semibold">
+            <span className="bg-revit-success text-white text-[9px] px-1.5 py-0.5 rounded-sm">
               {savedProducts.length}
             </span>
           )}
@@ -629,7 +716,7 @@ export default function MinimalLayout({
             {/* Material Selector - Revit 2026 style */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-[11px] text-revit-text uppercase tracking-wide font-medium">
+                <label className="text-[10px] text-revit-primary uppercase tracking-widest">
                   Select Material
                 </label>
                 {isRevitPlugin && onRefresh && (
@@ -666,13 +753,44 @@ export default function MinimalLayout({
                     : 'text-revit-text'
                 }`}
               >
+                <option value={CUSTOM_MATERIAL_ID}>+ Search custom material...</option>
                 {materials.map(m => (
                   <option key={m.id} value={m.id}>
                     {m.name} ({m.qty} {m.unit})
                   </option>
                 ))}
               </select>
+
+              {/* Custom material text input */}
+              {isCustomMode && (
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={customMaterialName}
+                    onChange={(e) => setCustomMaterialName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && customMaterialName.trim() && !isScanning) handleScan();
+                    }}
+                    placeholder="e.g. Mass Timber CLT, Terrazzo..."
+                    autoFocus
+                    className="flex-1 bg-revit-dark border border-revit-primary/50 rounded px-3 py-2 text-sm text-revit-text placeholder:text-revit-text/30 focus:border-revit-primary focus:outline-none focus:ring-1 focus:ring-revit-primary/20"
+                  />
+                  <button
+                    onClick={() => {
+                      setSelectedMaterialId(materials[0]?.id || null);
+                      setCustomMaterialName('');
+                      setLastScannedCustomName('');
+                      setExpandedProduct(null);
+                    }}
+                    className="p-2 text-revit-text/40 hover:text-revit-text transition-colors"
+                    title="Cancel custom search"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
+
 
 
             {/* Scan Button - Revit 2026 style with accent color */}
@@ -680,8 +798,8 @@ export default function MinimalLayout({
               <div className="flex gap-2">
                 <button
                   onClick={handleScan}
-                  disabled={isScanning || !selectedMaterial}
-                  className="flex-1 py-2.5 bg-revit-success hover:bg-[#3db89f] disabled:bg-revit-border disabled:text-revit-text/40 text-revit-darker font-semibold rounded text-sm flex items-center justify-center gap-2 transition-colors"
+                  disabled={isScanning || !selectedMaterial || (isCustomMode && !customMaterialName.trim())}
+                  className="flex-1 py-2.5 bg-revit-success hover:bg-[#2e5420] disabled:bg-revit-border disabled:text-revit-text/40 text-white uppercase tracking-widest rounded text-[11px] flex items-center justify-center gap-2 transition-colors"
                 >
                   {isScanning ? (
                     <>
@@ -712,6 +830,19 @@ export default function MinimalLayout({
                 )}
               </div>
               
+              {/* Usage indicator */}
+              {!isScanning && (
+                userApiKey ? (
+                  <div className="text-[10px] text-center text-revit-success/60">Using your Perplexity key</div>
+                ) : freeScansRemaining !== null && freeScansRemaining <= 20 ? (
+                  <div className={`text-[10px] text-center ${freeScansRemaining === 0 ? 'text-revit-error' : 'text-revit-text/40'}`}>
+                    {freeScansRemaining === 0
+                      ? 'No free scans left — add your API key in Settings'
+                      : `${freeScansRemaining} free scan${freeScansRemaining !== 1 ? 's' : ''} remaining`}
+                  </div>
+                ) : null
+              )}
+
               {/* Progress indicator */}
               {productStatuses.length > 0 ? (
                 <div className="px-3 py-2 bg-revit-primary/10 border border-revit-primary/30 rounded text-xs text-revit-text/80">
@@ -747,11 +878,12 @@ export default function MinimalLayout({
                 </div>
               ) : null}
               
+
               {/* Find More Materials Button */}
               {scannedResult && scannedResult.recommendations.length > 0 && (
                 <button
                   onClick={handleFindMoreMaterials}
-                  disabled={isFindingMore || !selectedMaterial}
+                  disabled={isFindingMore || !selectedMaterial || isCustomMode}
                   className="w-full py-2 bg-revit-primary/20 hover:bg-revit-primary/30 disabled:bg-revit-border disabled:text-revit-text/40 text-revit-primary font-medium rounded text-sm flex items-center justify-center gap-2 transition-colors"
                 >
                   {isFindingMore ? (
@@ -779,7 +911,7 @@ export default function MinimalLayout({
             {/* Results */}
             {scannedResult && (
               <div className="space-y-2">
-                <div className="text-[11px] text-revit-text/70 uppercase tracking-wide font-medium">
+                <div className="text-[10px] text-revit-primary uppercase tracking-widest pb-1 border-b border-revit-border">
                   {scannedResult.recommendations.length} Products Found
                 </div>
 
@@ -811,10 +943,10 @@ export default function MinimalLayout({
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm text-revit-text truncate">
+                            <div className="font-serif text-sm text-revit-text truncate">
                               {product.product_label}
                             </div>
-                            <div className="text-xs text-revit-text/60 truncate">
+                            <div className="text-[10px] text-revit-text/50 truncate mt-0.5">
                               {product.manufacturer || 'Unknown manufacturer'}
                             </div>
                             <div className="mt-1.5">
@@ -831,7 +963,7 @@ export default function MinimalLayout({
                       {isExpanded && (
                         <div className="px-3 pb-3 space-y-3 border-t border-revit-border">
                           {/* Rationale */}
-                          <p className="text-xs text-revit-text/70 pt-3">
+                          <p className="text-xs font-serif text-revit-text/70 pt-3 leading-relaxed">
                             {product.rationale}
                           </p>
 
@@ -841,7 +973,7 @@ export default function MinimalLayout({
                               href={product.product_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="flex items-center gap-2 px-2 py-1.5 bg-revit-success/10 border border-revit-success/30 rounded text-xs text-revit-success hover:bg-revit-success/20 transition-colors"
+                              className="flex items-center gap-2 px-2 py-1.5 bg-revit-success/10 border border-revit-success/30 rounded text-[10px] uppercase tracking-wide text-revit-success hover:bg-revit-success/20 transition-colors"
                             >
                               <ExternalLink className="w-3 h-3" />
                               View Product Page
@@ -850,7 +982,7 @@ export default function MinimalLayout({
 
                           {/* All Documentation Links by Type */}
                           <div className="space-y-2 border-t border-revit-border pt-2">
-                            <div className="text-[11px] text-revit-text/70 uppercase tracking-wide font-medium">
+                            <div className="text-[10px] text-revit-primary uppercase tracking-widest">
                               Documentation Links
                             </div>
                             
@@ -896,10 +1028,12 @@ export default function MinimalLayout({
 
             {/* Empty State */}
             {!scannedResult && !isScanning && selectedMaterial && (
-              <div className="text-center py-8 text-revit-text/50 text-sm">
-                <Search className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <p>Select a material and click</p>
-                <p className="text-revit-text/50">Find Products</p>
+              <div className="text-center py-10 text-revit-text/40">
+                <div className="w-8 h-8 mx-auto mb-3 opacity-20 border border-revit-accent rounded-full flex items-center justify-center">
+                  <Search className="w-4 h-4 text-revit-accent" />
+                </div>
+                <p className="font-serif text-sm text-revit-text/50 mb-1">Select a material and click</p>
+                <p className="font-mono text-[10px] uppercase tracking-widest text-revit-primary">Find Products</p>
               </div>
             )}
           </div>
@@ -914,7 +1048,7 @@ export default function MinimalLayout({
               </div>
             ) : (
               <>
-                <div className="text-[11px] text-revit-text/70 uppercase tracking-wide font-medium">
+                <div className="text-[10px] text-revit-primary uppercase tracking-widest pb-1 border-b border-revit-border">
                   {savedProducts.length} Saved Product{savedProducts.length !== 1 ? 's' : ''}
                 </div>
 
@@ -942,13 +1076,13 @@ export default function MinimalLayout({
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm text-revit-text truncate">
+                            <div className="font-serif text-sm text-revit-text truncate">
                               {product.product_label}
                             </div>
-                            <div className="text-xs text-revit-text/60 truncate">
+                            <div className="text-[10px] text-revit-text/50 truncate mt-0.5">
                               {product.manufacturer || 'Unknown manufacturer'}
                             </div>
-                            <div className="text-[10px] text-revit-text/50 mt-1">
+                            <div className="text-[10px] text-revit-primary/70 mt-0.5">
                               For: {extProduct.materialName}
                             </div>
                             <div className="mt-1.5">
@@ -963,7 +1097,7 @@ export default function MinimalLayout({
                       {isExpanded && (
                         <div className="px-3 pb-3 space-y-3 border-t border-revit-border">
                           {/* Rationale */}
-                          <p className="text-xs text-revit-text/70 pt-3">
+                          <p className="text-xs font-serif text-revit-text/70 pt-3 leading-relaxed">
                             {product.rationale}
                           </p>
 
@@ -973,7 +1107,7 @@ export default function MinimalLayout({
                               href={product.product_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="flex items-center gap-2 px-2 py-1.5 bg-revit-success/10 border border-revit-success/30 rounded text-xs text-revit-success hover:bg-revit-success/20 transition-colors"
+                              className="flex items-center gap-2 px-2 py-1.5 bg-revit-success/10 border border-revit-success/30 rounded text-[10px] uppercase tracking-wide text-revit-success hover:bg-revit-success/20 transition-colors"
                             >
                               <ExternalLink className="w-3 h-3" />
                               View Product Page
@@ -982,7 +1116,7 @@ export default function MinimalLayout({
 
                           {/* All Documentation Links by Type */}
                           <div className="space-y-2 border-t border-revit-border pt-2">
-                            <div className="text-[11px] text-revit-text/70 uppercase tracking-wide font-medium">
+                            <div className="text-[10px] text-revit-primary uppercase tracking-widest">
                               Documentation Links
                             </div>
                             
@@ -1022,6 +1156,9 @@ export default function MinimalLayout({
           settings={settings}
           onSettingsChange={onSettingsChange}
           onClose={() => setShowSettings(false)}
+          freeScansRemaining={freeScansRemaining}
+          userApiKey={userApiKey}
+          onUserApiKeyChange={handleUserApiKeyChange}
         />
       )}
     </div>
@@ -1033,36 +1170,124 @@ interface InfoDialogProps {
   settings: AppSettings;
   onSettingsChange: (settings: Partial<AppSettings>) => void;
   onClose: () => void;
+  freeScansRemaining: number | null;
+  userApiKey: string;
+  onUserApiKeyChange: (key: string) => void;
 }
 
-function InfoDialog({ settings, onSettingsChange, onClose }: InfoDialogProps) {
+function InfoDialog({ settings, onSettingsChange, onClose, freeScansRemaining, userApiKey, onUserApiKeyChange }: InfoDialogProps) {
+  const [showKey, setShowKey] = useState(false);
+  const [keyDraft, setKeyDraft] = useState(userApiKey);
+
+  const handleSaveKey = () => {
+    onUserApiKeyChange(keyDraft.trim());
+  };
+
+  const handleClearKey = () => {
+    setKeyDraft('');
+    onUserApiKeyChange('');
+  };
+
+  const FREE_SCAN_LIMIT = 50;
+  const usedScans = freeScansRemaining !== null ? FREE_SCAN_LIMIT - freeScansRemaining : null;
+  const progressPct = freeScansRemaining !== null ? Math.max(0, freeScansRemaining / FREE_SCAN_LIMIT) * 100 : 100;
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div 
+      <div
         className="bg-revit-panel border border-revit-border rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6 border-b border-revit-border flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-revit-text">About</h2>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-revit-dark rounded text-revit-text/70 hover:text-revit-text"
-          >
+          <h2 className="text-xl font-serif italic text-revit-primary">About</h2>
+          <button onClick={onClose} className="p-1 hover:bg-revit-dark rounded text-revit-text/70 hover:text-revit-text">
             <X className="w-5 h-5" />
           </button>
         </div>
-        
+
         <div className="p-6 space-y-6">
           {/* Description */}
           <div className="space-y-3">
             <p className="text-sm text-revit-text leading-relaxed">
-              This plugin helps you find sustainable building material alternatives with verified environmental documentation. 
-              Scan your materials to discover products with EPD, HPD, Declare, and VOC certifications, complete with direct links 
+              This plugin helps you find sustainable building material alternatives with verified environmental documentation.
+              Scan your materials to discover products with EPD, HPD, Declare, and VOC certifications, complete with direct links
               to manufacturer websites and documentation.
             </p>
             <p className="text-sm text-revit-text/80 leading-relaxed">
               Simply select a material and click <span className="text-revit-success font-medium">Find Products</span> to get started.
             </p>
+          </div>
+
+          {/* Free Tier Usage */}
+          <div className="space-y-2 pt-4 border-t border-revit-border">
+            <div className="text-[10px] uppercase tracking-widest text-revit-primary">Free Scans</div>
+            {userApiKey ? (
+              <p className="text-xs text-revit-success/80">Using your own API key — unlimited scans at your cost.</p>
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-1.5 bg-revit-border rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${freeScansRemaining === 0 ? 'bg-revit-error' : 'bg-revit-success'}`}
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-revit-text/60 flex-shrink-0 tabular-nums">
+                    {freeScansRemaining !== null ? `${freeScansRemaining} / ${FREE_SCAN_LIMIT}` : '— / 50'} remaining
+                  </span>
+                </div>
+                {freeScansRemaining === 0 && (
+                  <p className="text-xs text-revit-error">Free scans exhausted. Enter your Perplexity API key below to continue.</p>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* BYOK — User API Key */}
+          <div className="space-y-2">
+            <div className="text-[10px] uppercase tracking-widest text-revit-primary">Your Perplexity API Key</div>
+            <p className="text-xs text-revit-text/60 leading-relaxed">
+              Enter your own key for unlimited scans at your cost (~$0.08/scan).{' '}
+              <a
+                href="https://www.perplexity.ai/settings/api"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-revit-text"
+              >
+                Get a key at perplexity.ai
+              </a>
+            </p>
+            <div className="flex gap-2">
+              <input
+                type={showKey ? 'text' : 'password'}
+                value={keyDraft}
+                onChange={(e) => setKeyDraft(e.target.value)}
+                onBlur={handleSaveKey}
+                placeholder="pplx-..."
+                className="flex-1 bg-revit-dark border border-revit-border rounded px-3 py-1.5 text-sm text-revit-text placeholder:text-revit-text/30 focus:border-revit-primary focus:outline-none focus:ring-1 focus:ring-revit-primary/20"
+              />
+              <button
+                onClick={() => setShowKey(s => !s)}
+                className="px-3 py-1.5 text-xs bg-revit-border rounded hover:bg-revit-border/80 text-revit-text/70 transition-colors"
+                title={showKey ? 'Hide key' : 'Show key'}
+              >
+                {showKey ? 'Hide' : 'Show'}
+              </button>
+              {keyDraft && (
+                <button
+                  onClick={handleClearKey}
+                  className="px-3 py-1.5 text-xs bg-revit-error/20 text-revit-error rounded hover:bg-revit-error/30 transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            {userApiKey && keyDraft === userApiKey && (
+              <p className="text-[10px] text-revit-success">Key saved — all scans will use your key.</p>
+            )}
+            {keyDraft && keyDraft !== userApiKey && (
+              <p className="text-[10px] text-revit-text/50">Click away or close to save.</p>
+            )}
           </div>
 
           {/* Privacy & Feedback */}

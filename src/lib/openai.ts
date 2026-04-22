@@ -16,15 +16,19 @@ export function getOpenAIClient(): OpenAI {
 // Initialize Perplexity client for web search
 export function getPerplexityClient(): OpenAI {
   const apiKey = process.env.PERPLEXITY_API_KEY;
-  
+
   if (!apiKey) {
     throw new Error('PERPLEXITY_API_KEY environment variable is not set. Add it to .env.local for real-time product search.');
   }
-  
+
   return new OpenAI({
     apiKey,
     baseURL: 'https://api.perplexity.ai',
   });
+}
+
+export function getPerplexityClientWithKey(apiKey: string): OpenAI {
+  return new OpenAI({ apiKey, baseURL: 'https://api.perplexity.ai' });
 }
 
 // System prompt for finding products - PREFER DOCUMENTED PRODUCTS

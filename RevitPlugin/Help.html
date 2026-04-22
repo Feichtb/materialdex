@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Materialdex - Help</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #8B5830;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 30px;
+            border-left: 4px solid #8B5830;
+            padding-left: 15px;
+        }
+        h3 {
+            color: #555;
+            margin-top: 20px;
+        }
+        .step {
+            background-color: #fdf6f0;
+            padding: 10px;
+            margin: 10px 0;
+            border-left: 3px solid #8B5830;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        .warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        .info-box {
+            background-color: #fdf6f0;
+            border: 1px solid #8B5830;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        ul {
+            padding-left: 20px;
+        }
+        li {
+            margin: 8px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Materialdex &mdash; Sustainable Materials Suggestor</h1>
+        <p>Version 2.0.0 &nbsp;&middot;&nbsp; Revit 2025 and 2026 &nbsp;&middot;&nbsp; <a href="mailto:ben.materialdex@gmail.com">ben.materialdex@gmail.com</a></p>
+
+        <h2>Overview</h2>
+        <p>Materialdex is an AI-assisted tool that helps architects find sustainable product alternatives for the materials in their Revit model. For each material it surfaces real manufacturer products with links to EPDs, HPDs, Declare labels, and VOC certifications.</p>
+
+        <div class="info-box">
+            <strong>Free Scan Limit</strong>
+            <p style="margin: 6px 0 0;">Materialdex includes <strong>50 free scans</strong> per device. After that, add your own <a href="https://www.perplexity.ai/settings/api">Perplexity API key</a> in the app settings (&approx;&thinsp;$0.08 per scan). Your key is never stored &mdash; it is sent only when you initiate a scan.</p>
+        </div>
+
+        <h2>Getting Started</h2>
+        <div class="step">
+            <p><strong>1.</strong> Open a Revit project.</p>
+            <p><strong>2.</strong> Click <strong>Show Materialdex</strong> in the Materialdex ribbon tab to open the panel.</p>
+            <p><strong>3.</strong> Click <strong>Extract Materials</strong> to read materials from the active model. Materials and their quantities appear in the panel.</p>
+            <p><strong>4.</strong> Select a material from the list and click <strong>Find Products</strong>.</p>
+            <p><strong>5.</strong> Review the product recommendations. Expand a product card to see its documentation links (EPD, HPD, Declare, VOC).</p>
+            <p><strong>6.</strong> Bookmark products you want to keep. They are saved to your Library tab.</p>
+            <p><strong>7.</strong> Re-run scans at any time as the model evolves.</p>
+        </div>
+
+        <h2>Installation</h2>
+        <div class="step">
+            <p><strong>Step 1:</strong> Download the latest <code>Materialdex-v2.0.0.zip</code> from <a href="https://github.com/benfeicht/materialdex/releases">github.com/benfeicht/materialdex/releases</a>.</p>
+            <p><strong>Step 2:</strong> Extract the ZIP and locate the <code>Materialdex.bundle</code> folder.</p>
+            <p><strong>Step 3:</strong> Copy the <code>Materialdex.bundle</code> folder to one of these locations:</p>
+            <ul>
+                <li><strong>Per-user (recommended):</strong> <code>%AppData%\Autodesk\ApplicationPlugins\</code></li>
+                <li><strong>Per-machine (admin required):</strong> <code>%ProgramData%\Autodesk\ApplicationPlugins\</code></li>
+            </ul>
+            <p><strong>Step 4:</strong> Launch Revit. The <strong>Materialdex</strong> tab will appear in the ribbon.</p>
+        </div>
+
+        <h2>Uninstallation</h2>
+        <div class="step">
+            <p><strong>1.</strong> Close Revit.</p>
+            <p><strong>2.</strong> Delete the <code>Materialdex.bundle</code> folder from the ApplicationPlugins location where you installed it.</p>
+            <p><strong>3.</strong> Restart Revit.</p>
+        </div>
+
+        <h2>Verifying Product Documentation</h2>
+        <div class="warning">
+            <p><strong>Important:</strong> Always verify documentation links before using them in specifications. AI-generated results are a starting point, not a substitute for professional judgment.</p>
+            <ul>
+                <li><strong>Expiration dates:</strong> EPDs, HPDs, and certifications expire. Confirm documents are current.</li>
+                <li><strong>Regional relevance:</strong> Documentation may apply to specific regions. Verify it applies to your project location.</li>
+                <li><strong>Product variants:</strong> Links may reference a related product in the same line. Confirm the exact model matches your specification.</li>
+                <li><strong>Manufacturer updates:</strong> Check the manufacturer's website for the most recent documentation.</li>
+            </ul>
+        </div>
+
+        <h2>Additional Information</h2>
+
+        <div class="info-box">
+            <h3 style="margin-top:0;">Data Usage</h3>
+            <ul style="margin-bottom:0;">
+                <li>Material names from your open Revit model are sent to the Materialdex web service to generate suggestions.</li>
+                <li>Project ZIP code and goals (if entered) are also included to improve regional relevance.</li>
+                <li>Model geometry and client information are not collected.</li>
+                <li>If you use your own Perplexity API key, your key is sent per-request and not stored.</li>
+            </ul>
+        </div>
+
+        <h2>Known Limitations</h2>
+        <ul>
+            <li>Results are based on material names and typical use cases. Generic or abbreviated names may yield fewer or less relevant results.</li>
+            <li>Documentation links can occasionally point to outdated or region-specific documents. Always verify before specifying.</li>
+            <li>The plugin requires an active internet connection.</li>
+        </ul>
+
+        <h2>Troubleshooting</h2>
+
+        <h3>Plugin tab not appearing in Revit</h3>
+        <ul>
+            <li>Confirm the <code>Materialdex.bundle</code> folder is directly inside <code>ApplicationPlugins\</code>, not nested in a subfolder.</li>
+            <li>Check <strong>Manage &rarr; Add-ins</strong> for error messages.</li>
+            <li>Restart Revit after installation.</li>
+        </ul>
+
+        <h3>WebView2 Runtime error</h3>
+        <p>Download and install WebView2 from: <a href="https://developer.microsoft.com/microsoft-edge/webview2/">developer.microsoft.com/microsoft-edge/webview2</a></p>
+
+        <h3>Cannot connect / panel is blank</h3>
+        <ul>
+            <li>Check your internet connection.</li>
+            <li>Check that your firewall allows Revit to reach materialdex.netlify.app.</li>
+            <li>Use the refresh button in the panel header.</li>
+        </ul>
+
+        <h3>Materials not extracting</h3>
+        <ul>
+            <li>Ensure a Revit project file (.rvt) is open and active.</li>
+            <li>Try closing and reopening the Materialdex panel.</li>
+        </ul>
+
+        <h2>Contact &amp; Support</h2>
+        <p><strong>Developer:</strong> Ben Feicht</p>
+        <p><strong>Website:</strong> <a href="https://www.benfeicht.com/">benfeicht.com</a></p>
+        <p><strong>Email:</strong> <a href="mailto:ben.materialdex@gmail.com">ben.materialdex@gmail.com</a></p>
+        <p><strong>GitHub:</strong> <a href="https://github.com/benfeicht/materialdex">github.com/benfeicht/materialdex</a></p>
+
+        <hr style="margin-top: 40px; border: none; border-top: 1px solid #ddd;">
+        <p style="text-align: center; color: #777; font-size: 0.9em;">Materialdex v2.0.0 &nbsp;&middot;&nbsp; Developed by Ben Feicht &nbsp;&middot;&nbsp; MIT License</p>
+    </div>
+</body>
+</html>

@@ -10,6 +10,9 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@lottiefiles/dotlottie-react": "^0.18.10",
+    "@netlify/blobs": "^10.7.4",
+    "exa-js": "^2.11.0",
     "firebase": "^12.7.0",
     "jspdf": "^2.5.2",
     "jspdf-autotable": "^3.8.3",

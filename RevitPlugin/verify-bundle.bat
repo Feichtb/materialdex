@@ -42,13 +42,7 @@ if not exist "Materialdex.bundle\Contents\Materialdex.dll" (
     echo [OK] Materialdex.dll found
 )
 
-REM Check dependencies
-if not exist "Materialdex.bundle\Contents\SustainSpec.dll" (
-    echo [WARNING] SustainSpec.dll not found
-) else (
-    echo [OK] SustainSpec.dll found
-)
-
+REM Check WebView2 dependency (required for dockable pane)
 if not exist "Materialdex.bundle\Contents\Microsoft.Web.WebView2.Wpf.dll" (
     echo [ERROR] WebView2 WPF DLL not found!
     set /a ERRORS+=1

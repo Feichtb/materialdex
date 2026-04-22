@@ -12,7 +12,7 @@ using Autodesk.Revit.UI.Events;
 namespace Materialdex
 {
     /// <summary>
-    /// Main application class that initializes the Materialdex plugin for Revit 2026.
+    /// Main application class that initializes the Materialdex plugin for Revit 2025 and 2026.
     /// Creates a ribbon panel with buttons to launch the Materialdex web interface.
     /// </summary>
     public class App : IExternalApplication
@@ -44,6 +44,22 @@ namespace Materialdex
                 );
                 showPanelButtonData.ToolTip = "Open Materialdex - Sustainable Materials Panel";
                 showPanelButtonData.LongDescription = "Opens a panel that helps you find sustainable building material alternatives with EPD, HPD, Declare, and VOC documentation.";
+
+                // F1 contextual help - opens bundled Help.html when user presses F1 on the button
+                try
+                {
+                    string assemblyDirForHelp = Path.GetDirectoryName(assemblyPath) ?? "";
+                    string helpFilePath = Path.Combine(assemblyDirForHelp, "Help.html");
+                    string helpUrl = File.Exists(helpFilePath)
+                        ? new Uri(helpFilePath).AbsoluteUri
+                        : "https://www.benfeicht.com/materialdex";
+                    showPanelButtonData.SetContextualHelp(
+                        new ContextualHelp(ContextualHelpType.Url, helpUrl));
+                }
+                catch (Exception)
+                {
+                    // Contextual help not critical - continue without it
+                }
                 
                 // Load icons from file system (more reliable than embedded resources)
                 try
@@ -101,7 +117,7 @@ namespace Materialdex
 
             // Check for document changes and proactively send updates
             // Only check if the pane is shown and initialized
-            if (DockablePane != null && DockablePane.IsInitialized() && _uiApplication != null)
+            if (DockablePane != null && DockablePane.IsWebViewInitialized() && _uiApplication != null)
             {
                 try
                 {

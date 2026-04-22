@@ -121,6 +121,7 @@ export interface AppSettings {
   conservativeMode: boolean;
   neverFabricateUrls: boolean; // Always true, enforced
   useWebSearch: boolean; // Use web search for real product data
+  docSearchProvider: 'perplexity' | 'perplexity-v2' | 'exa'; // Provider for doc URL searches (Stage 2)
 }
 
 // Application state

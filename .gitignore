@@ -15,6 +15,7 @@ coverage
 # Misc
 .DS_Store
 *.pem
+*.pfx
 Thumbs.db
 
 # Debug
@@ -71,5 +72,16 @@ RevitPlugin/Materialdex.bundle/
 RevitPlugin/Materialdex-v*.zip
 RevitPlugin/test-extract/
 RevitPlugin/*.zip
-RevitPlugin/=!.zip
+
+# Code signing tools (App Store signing, not needed for direct distribution)
+RevitPlugin/sign-dll.bat
+RevitPlugin/sign-and-package.bat
+RevitPlugin/create-signing-cert.ps1
+RevitPlugin/DIGITAL_SIGNATURE.md
+
+# Eval tooling (internal, not part of the open-source release)
+eval/
+
+# Outdated App Store screenshots
+store screenshots/
 

@@ -1,136 +1,96 @@
-# SustainSpec
+# Materialdex — Sustainable Materials Suggestor
 
-A Revit-plugin-like prototype for sustainable building material recommendations with real product search.
+A free Revit plugin that helps architects find sustainable building material alternatives. It scans your model's materials and surfaces product recommendations with EPD, HPD, Declare, and VOC documentation links, powered by AI-driven real-time search.
 
-## Overview
+## Features
 
-SustainSpec helps architects and builders identify sustainable product alternatives for common building materials, complete with links to real products, manufacturer websites, and environmental documentation (EPD, HPD, Declare, VOC certifications).
+- **Material scanning** — Extracts materials and quantities from your active Revit document
+- **AI-powered product search** — Finds real sustainable alternatives with live web search via Perplexity
+- **Documentation links** — EPD, HPD, Declare, and VOC certifications located from primary sources
+- **50 free scans included** — After that, add your own Perplexity API key for unlimited use
 
-## Key Features
+## Supported Versions
 
-- **Single Material Scanning**: Scan individual materials one at a time for focused testing and refinement
-- **Real Product Links**: Uses web search (via Perplexity) to find actual products with real URLs
-- **Documentation Links**: Direct links to EPD, HPD, Declare documents when available
-- **Product Recommendations**: Get 3-6 verified sustainable product alternatives per material
-- **Documentation Checklist**: Track verification status of sustainability certifications
-- **Export Capabilities**: Export to CSV or generate a PDF binder index
-- **Local Storage**: All data persists in your browser
+Revit 2025 and 2026 · Windows 64-bit
 
-## Tech Stack
+## Installation
 
-- Next.js 14 (App Router)
-- TypeScript
-- Tailwind CSS
-- Perplexity API (Sonar Pro with web search)
-- OpenAI API (GPT-4.1 fallback)
-- jsPDF for PDF generation
+1. Download `Materialdex-v2.0.0.zip` from the [Releases page](../../releases)
+2. Extract the ZIP
+3. Copy the `Materialdex.bundle` folder to one of these locations:
+   - **Per-user** (recommended): `%AppData%\Autodesk\ApplicationPlugins\`
+   - **Per-machine** (admin required): `%ProgramData%\Autodesk\ApplicationPlugins\`
+4. Launch Revit — look for the **Materialdex** tab in the ribbon
 
-## Setup
-
-1. **Install dependencies**:
-   ```bash
-   npm install
-   ```
-
-2. **Configure API keys** - Create a `.env.local` file:
-   ```bash
-   # Perplexity API Key (recommended - has real-time web search for real products)
-   # Get one at https://www.perplexity.ai/settings/api
-   PERPLEXITY_API_KEY=pplx-your-api-key-here
-
-   # OpenAI API Key (optional - for GPT-4.1 models without web search)
-   # Get one at https://platform.openai.com/api-keys
-   OPENAI_API_KEY=sk-your-api-key-here
-   ```
-
-3. **Run the development server**:
-   ```bash
-   npm run dev
-   ```
-
-4. **Open your browser**:
-   Navigate to [http://localhost:3000](http://localhost:3000)
+Full details: [RevitPlugin/INSTALLATION_INSTRUCTIONS.md](RevitPlugin/INSTALLATION_INSTRUCTIONS.md)
 
 ## Usage
 
-### Single Material Workflow (Recommended)
+1. Open a Revit project
+2. Click **Show Materialdex** in the ribbon to open the panel
+3. Click **Extract Materials** to load the model's materials
+4. Select a material and click **Find Products**
+5. Review recommendations, expand cards to see documentation links, and bookmark products to your library
 
-1. **Set Project Info**: Enter your project name, ZIP code, and sustainability goals
-2. **Add/Edit Materials**: Add materials or use the pre-loaded examples
-3. **Scan Individual Material**: Click the "Scan" button next to any material
-4. **Review Results**: View real product recommendations with links
-5. **Save Products**: Click "Save" on products you want to include
-6. **Export**: Generate CSV or PDF documentation
+### Free Scan Limit
 
-### Bulk Scan (Legacy)
+The hosted API includes **50 free scans per device**. After that, add your own [Perplexity API key](https://www.perplexity.ai/settings/api) in the app settings (approximately $0.08 per scan using sonar-pro).
 
-Click "Run Scan" in the header to scan all active materials at once.
+## Architecture
 
-## API Endpoints
+Two-part system:
 
-### POST /api/scan-material
+| Component | Location | Description |
+|-----------|----------|-------------|
+| Revit Plugin | `RevitPlugin/` | C# WPF plugin, embeds the web app in a dockable pane via WebView2 |
+| Web App | `src/` | Next.js 14 app, deployed at [materialdex.netlify.app](https://materialdex.netlify.app) |
 
-Scans a single material and returns recommendations with real product links.
+The plugin sends materials, theme, and project info to the web app via a JavaScript bridge (postMessage). The web app handles all AI calls server-side.
 
-**Request**:
-```json
-{
-  "material": {"id": "...", "name": "...", "qty": 0, "unit": "sf"},
-  "project": {"name": "...", "zip": "97205", "goals": "..."},
-  "settings": {"model": "sonar-pro", "conservativeMode": false}
-}
+## For Developers
+
+### Web app (local dev)
+
+```bash
+npm install
+npm run dev   # http://localhost:3000
 ```
 
-**Response**:
-```json
-{
-  "id": "...",
-  "name": "...",
-  "normalized_category": "Thermal Insulation",
-  "category_confidence": 0.95,
-  "notes_for_user": "...",
-  "recommendations": [
-    {
-      "product_label": "ROCKWOOL COMFORTBOARD 80",
-      "manufacturer": "ROCKWOOL",
-      "manufacturer_url": "https://www.rockwool.com",
-      "product_url": "https://www.rockwool.com/products/comfortboard-80",
-      "rationale": "High recycled content, excellent fire resistance...",
-      "doc_checklist": {
-        "epd": {"status": "verified", "doc_url": "https://..."},
-        "hpd": {"status": "verified", "doc_url": "https://..."},
-        "declare": {"status": "unverified", "doc_url": null},
-        "voc": {"status": "verified", "doc_url": null}
-      },
-      "confidence": 0.9
-    }
-  ]
-}
+Create `.env.local` with your API keys:
+
+```
+PERPLEXITY_API_KEY=pplx-...
+OPENAI_API_KEY=sk-...        # optional fallback
 ```
 
-### POST /api/scan
+### Building the Revit plugin
 
-Bulk scans multiple materials (legacy endpoint).
+Requires .NET 8 SDK and Revit 2025 or 2026 installed at the default path.
 
-### POST /api/verify
+```cmd
+cd RevitPlugin
+build.bat     # builds Release configuration
+install.bat   # copies to %APPDATA%\Autodesk\Revit\Addins\2026\
+```
 
-Verifies a user-provided documentation URL.
+For the bundle format (used for distribution):
 
-## Settings
+```cmd
+cd RevitPlugin
+package-for-store.bat   # creates Materialdex.bundle/
+create-zip.bat          # creates Materialdex-v2.0.0.zip
+```
 
-- **Model Selection**:
-  - **Perplexity Sonar Pro** (default): Real-time web search for actual products
-  - **Perplexity Sonar**: Faster web search
-  - **GPT-4.1**: High quality reasoning, no live web search
-  - **GPT-4.1 Mini/Nano**: Faster/cheaper options without web search
-  
-- **Conservative Mode**: Only return recommendations with high confidence (>70%)
-- **Web Search**: Enable/disable real-time product search
+See [RevitPlugin/README.md](RevitPlugin/README.md) for full developer setup.
 
-## Disclaimer
+## Marketing Site
 
-Recommendations include links found via web search. While we search for real products, always verify links and documentation are current and accurate. Product availability and documentation may change.
+The `marketing-site/` folder contains the landing page / blog post, deployed to Netlify from the same repository.
 
 ## License
 
-MIT
+MIT — see [RevitPlugin/License.txt](RevitPlugin/License.txt)
+
+## Contact
+
+Questions or feedback: ben.materialdex@gmail.com

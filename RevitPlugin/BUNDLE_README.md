@@ -1,6 +1,6 @@
 # Materialdex Bundle Package
 
-This folder contains the Autodesk Application Plug-in Package (`.bundle`) format for the Materialdex Revit plugin, ready for distribution via the Autodesk App Store.
+This folder contains the Autodesk Application Plug-in Package (`.bundle`) format for the Materialdex Revit plugin, distributed directly via GitHub Releases.
 
 ## Bundle Structure
 
@@ -10,7 +10,6 @@ Materialdex.bundle/
 └── Contents/                     # Plugin files folder
     ├── Materialdex.dll           # Main plugin assembly
     ├── Materialdex.addin        # Revit add-in manifest (optional for bundles)
-    ├── SustainSpec.dll          # Supporting library
     ├── Microsoft.Web.WebView2.*.dll  # WebView2 dependencies
     ├── Newtonsoft.Json.dll      # JSON library
     ├── Resources/               # Plugin icons
@@ -118,13 +117,13 @@ After installation, verify the plugin:
 - Download from: https://developer.microsoft.com/microsoft-edge/webview2/
 - Usually pre-installed on Windows 10/11
 
-## App Store Submission
+## Distribution
 
-See `APP_STORE_SUBMISSION.md` for detailed submission instructions.
+The plugin is distributed directly via GitHub Releases. Download the ZIP from the releases page and install manually using the steps above.
 
 ## Version Information
 
-- **Version:** 1.0.0
+- **Version:** 2.0.0
 - **Revit Version:** 2026
 - **.NET Version:** 8.0
 - **Platform:** Windows 64-bit
@@ -132,6 +131,6 @@ See `APP_STORE_SUBMISSION.md` for detailed submission instructions.
 ## Support
 
 For issues or questions:
-- Email: support@materialdex.com
-- Website: https://materialdex.com
+- Email: ben.materialdex@gmail.com
+- GitHub: https://github.com/benfeicht/materialdex
 

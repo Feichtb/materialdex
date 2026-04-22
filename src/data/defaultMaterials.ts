@@ -138,5 +138,6 @@ export const defaultSettings = {
   conservativeMode: false,
   neverFabricateUrls: true,
   useWebSearch: true,
+  docSearchProvider: 'perplexity-v2' as const,
 };
 

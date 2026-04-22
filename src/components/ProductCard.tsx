@@ -43,58 +43,58 @@ interface ProductCardProps {
 }
 
 // Confidence level display config
-const CONFIDENCE_DISPLAY: Record<LinkConfidence, { 
-  label: string; 
-  color: string; 
+const CONFIDENCE_DISPLAY: Record<LinkConfidence, {
+  label: string;
+  color: string;
   bgColor: string;
   icon: React.ReactNode;
   description: string;
 }> = {
-  direct_document: { 
-    label: 'Direct Doc', 
-    color: 'text-green-400', 
+  direct_document: {
+    label: 'Direct Doc',
+    color: 'text-green-800',
     bgColor: 'bg-green-400/20',
     icon: <FileText className="w-3 h-3" />,
     description: 'Actual EPD/HPD document or registry page',
   },
-  catalog_page: { 
-    label: 'Doc Catalog', 
-    color: 'text-emerald-400', 
+  catalog_page: {
+    label: 'Doc Catalog',
+    color: 'text-emerald-800',
     bgColor: 'bg-emerald-400/20',
     icon: <FolderOpen className="w-3 h-3" />,
     description: 'Documentation catalog or library page',
   },
-  product_line_doc: { 
-    label: 'Product Line', 
-    color: 'text-lime-400', 
+  product_line_doc: {
+    label: 'Product Line',
+    color: 'text-lime-800',
     bgColor: 'bg-lime-400/20',
     icon: <Package className="w-3 h-3" />,
     description: 'Same manufacturer - verify exact product variant',
   },
-  sustainability_page: { 
-    label: 'Sustainability', 
-    color: 'text-yellow-400', 
+  sustainability_page: {
+    label: 'Sustainability',
+    color: 'text-yellow-800',
     bgColor: 'bg-yellow-400/20',
     icon: <Leaf className="w-3 h-3" />,
     description: 'Sustainability page - may contain doc links',
   },
-  news_article: { 
-    label: 'News', 
-    color: 'text-orange-400', 
+  news_article: {
+    label: 'News',
+    color: 'text-orange-700',
     bgColor: 'bg-orange-400/20',
     icon: <Newspaper className="w-3 h-3" />,
     description: 'News article (not the actual document)',
   },
-  general_page: { 
-    label: 'General', 
-    color: 'text-gray-400', 
+  general_page: {
+    label: 'General',
+    color: 'text-gray-700',
     bgColor: 'bg-gray-400/20',
     icon: <Globe className="w-3 h-3" />,
     description: 'General page - low confidence',
   },
-  wrong_manufacturer: { 
-    label: 'Wrong Mfg', 
-    color: 'text-red-400', 
+  wrong_manufacturer: {
+    label: 'Wrong Mfg',
+    color: 'text-red-700',
     bgColor: 'bg-red-400/20',
     icon: <AlertCircle className="w-3 h-3" />,
     description: 'Different manufacturer entirely',
@@ -103,14 +103,14 @@ const CONFIDENCE_DISPLAY: Record<LinkConfidence, {
 
 // Category display config - renamed as "Reference Links" for research
 const CATEGORY_CONFIG: Record<string, { label: string; fullLabel: string; color: string; icon: string; description: string }> = {
-  epd: { label: 'EPD', fullLabel: 'EPD Reference Links', color: 'text-green-400', icon: '📋', description: 'Environmental Product Declaration sources' },
-  hpd: { label: 'HPD', fullLabel: 'HPD Reference Links', color: 'text-blue-400', icon: '🏥', description: 'Health Product Declaration sources' },
-  declare: { label: 'Declare', fullLabel: 'Declare Label References', color: 'text-purple-400', icon: '🏷️', description: 'Living Building Challenge Declare sources' },
-  voc: { label: 'VOC', fullLabel: 'VOC / Indoor Air Quality', color: 'text-cyan-400', icon: '🌿', description: 'VOC and GREENGUARD certification sources' },
-  product_page: { label: 'Product', fullLabel: 'Product Information', color: 'text-yellow-400', icon: '📦', description: 'Manufacturer product pages' },
-  manufacturer: { label: 'Mfg Site', fullLabel: 'Manufacturer Resources', color: 'text-gray-400', icon: '🏭', description: 'General manufacturer resources' },
-  wrong_manufacturer: { label: 'Wrong Mfg', fullLabel: 'Unrelated Manufacturers', color: 'text-red-400', icon: '❌', description: 'Links to different manufacturers' },
-  unknown: { label: '?', fullLabel: 'Other Links', color: 'text-gray-500', icon: '❓', description: 'Uncategorized links' },
+  epd: { label: 'EPD', fullLabel: 'EPD Reference Links', color: 'text-green-700', icon: '📋', description: 'Environmental Product Declaration sources' },
+  hpd: { label: 'HPD', fullLabel: 'HPD Reference Links', color: 'text-blue-700', icon: '🏥', description: 'Health Product Declaration sources' },
+  declare: { label: 'Declare', fullLabel: 'Declare Label References', color: 'text-purple-700', icon: '🏷️', description: 'Living Building Challenge Declare sources' },
+  voc: { label: 'VOC', fullLabel: 'VOC / Indoor Air Quality', color: 'text-cyan-700', icon: '🌿', description: 'VOC and GREENGUARD certification sources' },
+  product_page: { label: 'Product', fullLabel: 'Product Information', color: 'text-amber-700', icon: '📦', description: 'Manufacturer product pages' },
+  manufacturer: { label: 'Mfg Site', fullLabel: 'Manufacturer Resources', color: 'text-gray-600', icon: '🏭', description: 'General manufacturer resources' },
+  wrong_manufacturer: { label: 'Wrong Mfg', fullLabel: 'Unrelated Manufacturers', color: 'text-red-700', icon: '❌', description: 'Links to different manufacturers' },
+  unknown: { label: '?', fullLabel: 'Other Links', color: 'text-gray-600', icon: '❓', description: 'Uncategorized links' },
 };
 
 // Database search URLs
@@ -354,7 +354,7 @@ export default function ProductCard({
                 
                 return (
                   <div key={cat} className="space-y-1">
-                    <div className={`text-xs font-medium flex items-center gap-1 ${catConfig.color}`} title={catConfig.description}>
+                    <div className={`text-xs font-medium flex items-center gap-1 ${catConfig.color} cat-header-${cat}`} title={catConfig.description}>
                       <span>{catConfig.icon}</span>
                       {catConfig.fullLabel} ({links.length})
                     </div>
@@ -375,8 +375,8 @@ export default function ProductCard({
                             <div className="flex items-center gap-1 flex-shrink-0">
                               {/* Confidence level badge */}
                               {/* Confidence level badge */}
-                              <span 
-                                className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] ${confDisplay.bgColor} ${confDisplay.color}`}
+                              <span
+                                className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] ${confDisplay.bgColor} ${confDisplay.color} conf-badge-${link.confidenceLevel}`}
                                 title={confDisplay.description}
                               >
                                 {confDisplay.icon}
@@ -384,8 +384,8 @@ export default function ProductCard({
                               </span>
                               {/* Verify badge for product line docs */}
                               {link.needsVerification && (
-                                <span 
-                                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-400"
+                                <span
+                                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-700 verify-badge"
                                   title="Verify this is the correct product variant"
                                 >
                                   <AlertTriangle className="w-3 h-3" />
@@ -412,7 +412,7 @@ export default function ProductCard({
                             </div>
                           </div>
                           {/* Reason/explanation */}
-                          <div className="text-revit-text/50 text-[10px]">
+                          <div className="text-revit-text/70 text-[10px]">
                             {link.reason}
                           </div>
                         </div>
@@ -445,7 +445,7 @@ export default function ProductCard({
                             <div className="flex-1 min-w-0">
                               <div className="truncate">{link.title || 'No title'}</div>
                               <div className="truncate text-[10px] flex items-center gap-1 mt-0.5">
-                                <span className={`${confDisplay.color}`}>{confDisplay.label}</span>
+                                <span className={`${confDisplay.color} conf-badge-${link.confidenceLevel}`}>{confDisplay.label}</span>
                                 <span>•</span>
                                 <span>{link.reason}</span>
                               </div>
@@ -468,7 +468,7 @@ export default function ProductCard({
               {/* Industry-Wide EPDs Section */}
               {docSearch.industryWideEpds && docSearch.industryWideEpds.length > 0 && (
                 <div className="space-y-1 pt-2 border-t border-revit-border/50">
-                  <div className="text-xs font-medium text-amber-400 flex items-center gap-1" title="Industry-wide certifications that apply to this product category">
+                  <div className="text-xs font-medium text-amber-700 flex items-center gap-1 industry-wide-header" title="Industry-wide certifications that apply to this product category">
                     <Factory className="w-3 h-3" />
                     Industry-Wide Standards ({docSearch.industryWideEpds.length})
                   </div>
@@ -485,7 +485,7 @@ export default function ProductCard({
                           <div className="text-revit-text/90 font-medium">
                             {doc.title}
                           </div>
-                          <div className="text-[10px] text-amber-400/70 mt-0.5">
+                          <div className="text-[10px] text-amber-700 mt-0.5 industry-issuer">
                             {doc.issuer}
                           </div>
                           {doc.notes && (
@@ -498,7 +498,7 @@ export default function ProductCard({
                           href={doc.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="p-1 hover:bg-white/10 rounded text-amber-400 flex-shrink-0"
+                          className="p-1 hover:bg-white/10 rounded text-amber-700 flex-shrink-0 industry-link"
                           title="View industry-wide EPD"
                         >
                           <ExternalLink className="w-3 h-3" />
@@ -514,9 +514,9 @@ export default function ProductCard({
                 <div className="text-[10px] text-revit-text/40 mb-1">Confidence Levels:</div>
                 <div className="flex flex-wrap gap-1">
                   {Object.entries(CONFIDENCE_DISPLAY).map(([key, config]) => (
-                    <span 
-                      key={key} 
-                      className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] ${config.bgColor} ${config.color}`}
+                    <span
+                      key={key}
+                      className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] ${config.bgColor} ${config.color} conf-badge-${key}`}
                       title={config.description}
                     >
                       {config.icon}

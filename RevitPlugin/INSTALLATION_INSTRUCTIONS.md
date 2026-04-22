@@ -2,85 +2,82 @@
 
 ## Supported Versions
 
-**Revit 2026** (Windows 64-bit)
+**Revit 2025 and 2026** (Windows 64-bit)
 
-The plugin is currently built for Revit 2026. Future versions may support additional Revit releases.
+## Installation
 
-## Installation Methods
+### Step 1: Download
 
-### Method 1: Manual Installation (Recommended for App Store)
+Download `Materialdex-v2.0.0.zip` from the [GitHub Releases page](https://github.com/benfeicht/materialdex/releases).
 
-1. **Download** the `Materialdex-v1.0.0.zip` file
-2. **Extract** the ZIP file to a temporary location
-3. **Copy** the `Materialdex.bundle` folder to one of these locations:
-   - **Per User** (Recommended): `%AppData%\Autodesk\ApplicationPlugins\`
-     - Full path: `C:\Users\[YourUsername]\AppData\Roaming\Autodesk\ApplicationPlugins\`
-   - **Per Machine** (Requires Admin): `%ProgramData%\Autodesk\ApplicationPlugins\`
-     - Full path: `C:\ProgramData\Autodesk\ApplicationPlugins\`
-4. **Launch Revit 2026**
-5. Look for the **"Materialdex"** tab in the Revit ribbon
+### Step 2: Copy the bundle
 
-### Method 2: Using the Installer Script (For Developers)
+Extract the ZIP and copy the `Materialdex.bundle` folder to one of these locations:
 
-If you have the source code, you can use the installer script:
+**Per-user (recommended):**
+```
+%AppData%\Autodesk\ApplicationPlugins\
+```
+Full path: `C:\Users\[YourUsername]\AppData\Roaming\Autodesk\ApplicationPlugins\`
 
-1. Extract the ZIP file
-2. Navigate to the `RevitPlugin` folder
-3. Run `install-bundle.bat`
-4. Launch Revit 2026
+**Per-machine (requires admin):**
+```
+%ProgramData%\Autodesk\ApplicationPlugins\
+```
+Full path: `C:\ProgramData\Autodesk\ApplicationPlugins\`
+
+### Step 3: Launch Revit
+
+Start Revit 2025 or 2026. The **Materialdex** tab will appear in the ribbon automatically.
 
 ## Verification
 
-After installation, verify the plugin loaded correctly:
+To confirm the plugin loaded correctly:
 
-1. Open Revit 2026
+1. Open Revit
 2. Go to **Manage → Add-ins**
-3. Look for "Materialdex" in the list
-4. Check that there are no error messages
-5. Verify the "Materialdex" tab appears in the ribbon
+3. Look for "Materialdex" in the list with no error messages
+4. Confirm the **Materialdex** tab appears in the ribbon
 
-## Uninstallation
+## Uninstalling
 
-To uninstall the plugin:
-
-1. Close Revit 2026
-2. Delete the `Materialdex.bundle` folder from:
-   - `%AppData%\Autodesk\ApplicationPlugins\` (per-user)
-   - OR `%ProgramData%\Autodesk\ApplicationPlugins\` (per-machine)
+1. Close Revit
+2. Delete the `Materialdex.bundle` folder from the location you installed it
 3. Restart Revit
 
 ## Troubleshooting
 
-### Plugin Not Appearing
+### Plugin tab not appearing
 
-- Verify the bundle folder is in the correct location
-- Check that you're using Revit 2026
+- Confirm the bundle folder is in the correct location (not inside a subfolder)
+- Confirm you're using Revit 2025 or 2026
 - Restart Revit after installation
-- Check Revit's Add-ins dialog for error messages
+- Check **Manage → Add-ins** for error messages
 
-### WebView2 Runtime Error
+### WebView2 runtime error
 
-If you see a WebView2 error:
-1. Download WebView2 Runtime from: https://developer.microsoft.com/microsoft-edge/webview2/
-2. Install it
-3. Restart Revit
+WebView2 is usually pre-installed on Windows 10/11. If you see an error:
 
-### Permission Errors
+1. Download from: https://developer.microsoft.com/microsoft-edge/webview2/
+2. Install and restart Revit
 
-If you get permission errors when copying:
-- Try the per-user location (`%AppData%`) instead of per-machine
-- Run File Explorer as Administrator if using per-machine location
+### Permission errors when copying
+
+Use the per-user location (`%AppData%`) — it does not require admin rights.
 
 ## System Requirements
 
-- **Revit:** 2026
-- **OS:** Windows 10/11 (64-bit)
-- **.NET:** 8.0 Runtime (usually included with Revit 2026)
-- **WebView2:** Runtime (usually pre-installed on Windows 10/11)
+| Requirement | Details |
+|------------|---------|
+| Revit | 2025 or 2026 |
+| OS | Windows 10 or 11 (64-bit) |
+| .NET | 8.0 Runtime (included with Revit 2025/2026) |
+| WebView2 | Pre-installed on Windows 10/11 |
+| Internet | Required (plugin connects to the hosted web app) |
 
 ## Notes
 
-- The plugin requires an internet connection to access the Materialdex web application
-- Material extraction works with the active Revit document
-- The plugin automatically loads when Revit starts (no manual activation needed)
-
+- The plugin requires an active internet connection to reach the hosted web app
+- **50 free scans** are included. After that, add your own Perplexity API key in the app settings (≈ $0.08/scan)
+- Material extraction works only with the active Revit document
+- The plugin loads automatically when Revit starts

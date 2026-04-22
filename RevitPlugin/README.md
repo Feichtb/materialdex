@@ -48,21 +48,25 @@ install.bat
 
 ## Running the Plugin
 
-1. **Start the Web Application** (in the main project folder):
-   ```cmd
-   npm run dev
-   ```
-   This starts the Next.js app at http://localhost:3000
+1. **Launch Revit 2025 or 2026**
 
-2. **Launch Revit 2026**
+2. **Find Materialdex** in the ribbon:
+   - Look for the **Materialdex** tab
+   - Click **Show Materialdex** to open the panel
 
-3. **Find Materialdex** in the ribbon:
-   - Look for the "Materialdex" tab
-   - Click "Show Materialdex" to open the panel
+3. **Extract Materials** from your model:
+   - Click **Extract Materials** to scan the current document
+   - Materials appear in the Materialdex panel
 
-4. **Extract Materials** from your model:
-   - Click "Extract Materials" to scan the current document
-   - Materials will be sent to the Materialdex panel
+The plugin connects to the hosted web app at `materialdex.netlify.app`. No local server needed. If you want to run a local version of the web app for development, see the root README.
+
+## Running Locally (Development)
+
+To point the plugin at a local web app:
+
+1. In `MaterialdexDockablePane.xaml.cs`, set `USE_PRODUCTION = false`
+2. Run the Next.js app from the repo root: `npm run dev`
+3. Rebuild and reinstall the plugin
 
 ## Project Structure
 
@@ -170,9 +174,9 @@ After code changes:
 └─────────────────────────────────────────────────────────┘
 ```
 
-## App Store Package
+## Release Package
 
-The plugin is packaged as an Autodesk Application Plug-in Package (`.bundle`) for distribution via the Autodesk App Store.
+The plugin is packaged as an Autodesk Application Plug-in Package (`.bundle`) for distribution via GitHub Releases.
 
 ### Bundle Structure
 
@@ -195,7 +199,7 @@ Materialdex.bundle/
    dotnet build Materialdex.csproj -c Release
    ```
 
-2. **Package for App Store:**
+2. **Package for release:**
    ```cmd
    package-for-store.bat
    ```

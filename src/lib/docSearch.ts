@@ -1,16 +1,43 @@
 /**
  * Documentation Search Module
- * 
+ *
  * Searches for ALL documentation types (EPD, HPD, Declare, VOC) in one query,
  * then uses AI to categorize each result with confidence levels.
  * Also includes industry-wide EPDs as fallback/baseline references.
- * 
+ *
  * NEW: Validates URLs by fetching content and checking for manufacturer name.
+ * NEW: Supports Exa as alternative search provider for doc searches.
  */
 
 import OpenAI from 'openai';
+import Exa from 'exa-js';
 import { findIndustryWideEpds, IndustryWideDoc } from '@/data/industryWideEpds';
 import { validateUrlComplete, CombinedValidationResult } from './urlValidator';
+
+// --- Cost tracking ---
+
+export interface ScanCostSummary {
+  provider: 'perplexity' | 'perplexity-v2' | 'exa';
+  searchCalls: number;          // Number of web search calls made
+  categorizationCalls: number;  // Number of AI categorization calls
+  inputTokens: number;          // Perplexity only
+  outputTokens: number;         // Perplexity only
+  estimatedUsd: number;         // Total estimated cost in USD
+}
+
+// Perplexity pricing (per million tokens)
+const PERPLEXITY_PRICING: Record<string, { input: number; output: number }> = {
+  'sonar':     { input: 1.00,  output: 1.00  },
+  'sonar-pro': { input: 3.00,  output: 15.00 },
+};
+
+function calcPerplexityCost(model: string, inputTokens: number, outputTokens: number): number {
+  const rates = PERPLEXITY_PRICING[model] ?? { input: 1.00, output: 1.00 };
+  return (inputTokens / 1_000_000) * rates.input + (outputTokens / 1_000_000) * rates.output;
+}
+
+// Exa pricing: ~$0.001/search call (includes highlights, conservative estimate)
+const EXA_COST_PER_SEARCH = 0.001;
 
 // Debug flag - set to true to see search logs
 const DEBUG = true;
@@ -114,6 +141,7 @@ export interface DocSearchResult {
     other: CategorizedLink[];
   };
   industryWideEpds: IndustryWideDoc[]; // Fallback industry-wide documentation
+  costSummary?: ScanCostSummary;
 }
 
 // Confidence level descriptions for UI
@@ -128,27 +156,34 @@ export const CONFIDENCE_DESCRIPTIONS: Record<LinkConfidence, { label: string; sc
 };
 
 /**
- * Search for all documentation types at once, INCLUDING product pages
- * With optional progress callback
+ * Search for all documentation types at once, INCLUDING product pages.
+ * Supports Perplexity (legacy 19-call), Perplexity v2 (consolidated 1-call), or Exa.
  */
 export async function searchForDocumentation(
   productName: string,
   manufacturer: string | null,
   perplexityApiKey: string,
-  onProgress?: (message: string) => void
+  onProgress?: (message: string) => void,
+  provider: 'perplexity' | 'perplexity-v2' | 'exa' = 'perplexity',
+  exaApiKey?: string,
 ): Promise<DocSearchResult> {
-  return searchForDocumentationWithProgress(productName, manufacturer, perplexityApiKey, onProgress);
+  if (provider === 'perplexity-v2') {
+    return searchForDocumentationConsolidated(productName, manufacturer, perplexityApiKey, onProgress);
+  }
+  return searchForDocumentationWithProgress(productName, manufacturer, perplexityApiKey, onProgress, provider, exaApiKey);
 }
 
 /**
- * Search for all documentation types at once, INCLUDING product pages
- * With progress callback support
+ * Search for all documentation types at once, INCLUDING product pages.
+ * With progress callback support and optional Exa provider.
  */
 export async function searchForDocumentationWithProgress(
   productName: string,
   manufacturer: string | null,
   perplexityApiKey: string,
-  onProgress?: (message: string) => void
+  onProgress?: (message: string) => void,
+  provider: 'perplexity' | 'exa' = 'perplexity',
+  exaApiKey?: string,
 ): Promise<DocSearchResult> {
   debugLog(`Starting doc search for: ${productName} (manufacturer: ${manufacturer || 'not specified'})`);
   
@@ -164,12 +199,22 @@ export async function searchForDocumentationWithProgress(
     baseURL: 'https://api.perplexity.ai',
   });
 
+  // Cost accumulator
+  const cost: ScanCostSummary = {
+    provider,
+    searchCalls: 0,
+    categorizationCalls: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    estimatedUsd: 0,
+  };
+
   let rawResults: SearchResult[] = [];
 
   try {
     // Run SEPARATE targeted searches for each document type
     // This ensures we actually find EPDs/HPDs instead of just product pages
-    
+
     const searchQueries = [
       {
         name: 'EPD',
@@ -199,17 +244,45 @@ export async function searchForDocumentationWithProgress(
     ];
 
     // Run searches in parallel with timeout
-    const searchPromises = searchQueries.map(async ({ name, query, sites }) => {
+    const searchPromises = searchQueries.map(async ({ name, query }) => {
       try {
         debugLog(`\nSearching for ${name}...`);
         onProgress?.(`Searching ${name} pages...`);
-        
-        const searchResponse = await client.chat.completions.create({
-          model: 'sonar',
-          messages: [
-            {
-              role: 'system',
-              content: `You are finding ${name} documentation for building products.
+
+        if (provider === 'exa' && exaApiKey) {
+          // --- Exa search path ---
+          const exa = new Exa(exaApiKey);
+          const searchResponse = await exa.searchAndContents(query, {
+            numResults: 5,
+            type: 'auto',
+            highlights: { maxCharacters: 300 },
+          });
+
+          cost.searchCalls += 1;
+          cost.estimatedUsd += EXA_COST_PER_SEARCH;
+
+          const results: SearchResult[] = (searchResponse.results || [])
+            .filter((r: any) => r.url && r.url.startsWith('http'))
+            .filter((r: any) => !isFabricatedUrl(r.url))
+            .map((r: any) => ({
+              url: r.url,
+              title: r.title || '',
+              snippet: (r.highlights?.[0] ?? r.text?.substring(0, 200) ?? ''),
+            }));
+
+          debugLog(`  Found ${results.length} ${name} results (Exa)`);
+          if (results.length > 0) {
+            onProgress?.(`Found ${results.length} ${name} page${results.length > 1 ? 's' : ''}`);
+          }
+          return results;
+        } else {
+          // --- Perplexity search path ---
+          const searchResponse = await client.chat.completions.create({
+            model: 'sonar',
+            messages: [
+              {
+                role: 'system',
+                content: `You are finding ${name} documentation for building products.
 
 ## YOUR TASK:
 Find REAL, WORKING links for ${name} documentation.
@@ -233,48 +306,56 @@ Return ONLY real URLs as JSON (no citation numbers):
 - Empty search pages
 - Category pages without specific products
 - Citation numbers like [1] or [4]`,
-            },
-            {
-              role: 'user',
-              content: `Find ${name} documentation for:
+              },
+              {
+                role: 'user',
+                content: `Find ${name} documentation for:
 Product: ${productName}
 ${manufacturer ? `Manufacturer: ${manufacturer}` : ''}
 
 Search query: ${query}
-Check these sites: ${sites}
 
 Return SPECIFIC document pages (NOT homepages, NOT category pages).`,
-            },
-          ],
-          temperature: 0,
-        });
+              },
+            ],
+            temperature: 0,
+          });
 
-        const searchText = searchResponse.choices[0]?.message?.content || '';
-        
-        try {
-          const jsonMatch = searchText.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            let cleanedJson = jsonMatch[0]
-              .replace(/\}\s*\[\d+\]\s*,/g, '},')
-              .replace(/\}\s*\[\d+\]\s*\]/g, '}]')
-              .replace(/"\s*\[\d+\]\s*,/g, '",')
-              .replace(/"\s*\[\d+\]\s*\}/g, '"}');
-            
-            const parsed = JSON.parse(cleanedJson);
-            const results = (parsed.results || [])
-              .filter((r: SearchResult) => r.url && r.url.startsWith('http'))
-              .filter((r: SearchResult) => !isFabricatedUrl(r.url));
-            
-            debugLog(`  Found ${results.length} ${name} results`);
-            if (results.length > 0) {
-              onProgress?.(`Found ${results.length} ${name} page${results.length > 1 ? 's' : ''}`);
-            }
-            return results;
+          const usage = (searchResponse as any).usage;
+          if (usage) {
+            cost.inputTokens += usage.prompt_tokens ?? 0;
+            cost.outputTokens += usage.completion_tokens ?? 0;
           }
-        } catch (e) {
-          debugLog(`  Failed to parse ${name} search: ${e}`);
+          cost.searchCalls += 1;
+          cost.estimatedUsd += usage?.total_cost ?? calcPerplexityCost('sonar', usage?.prompt_tokens ?? 0, usage?.completion_tokens ?? 0);
+
+          const searchText = searchResponse.choices[0]?.message?.content || '';
+
+          try {
+            const jsonMatch = searchText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              let cleanedJson = jsonMatch[0]
+                .replace(/\}\s*\[\d+\]\s*,/g, '},')
+                .replace(/\}\s*\[\d+\]\s*\]/g, '}]')
+                .replace(/"\s*\[\d+\]\s*,/g, '",')
+                .replace(/"\s*\[\d+\]\s*\}/g, '"}');
+
+              const parsed = JSON.parse(cleanedJson);
+              const results = (parsed.results || [])
+                .filter((r: SearchResult) => r.url && r.url.startsWith('http'))
+                .filter((r: SearchResult) => !isFabricatedUrl(r.url));
+
+              debugLog(`  Found ${results.length} ${name} results`);
+              if (results.length > 0) {
+                onProgress?.(`Found ${results.length} ${name} page${results.length > 1 ? 's' : ''}`);
+              }
+              return results;
+            }
+          } catch (e) {
+            debugLog(`  Failed to parse ${name} search: ${e}`);
+          }
+          return [];
         }
-        return [];
       } catch (e) {
         debugLog(`  Error searching for ${name}: ${e}`);
         return [];
@@ -302,13 +383,19 @@ Return SPECIFIC document pages (NOT homepages, NOT category pages).`,
     // Step 2: Categorize each link with confidence levels
     debugLog(`\nStep 2: Categorizing ${rawResults.length} links...`);
     onProgress?.(`Categorizing ${rawResults.length} links by document type...`);
-    
-    let categorizedLinks = await categorizeLinks(
+
+    const { links: categorizedLinksRaw, inputTokens: catIn, outputTokens: catOut, costUsd: catCostUsd } = await categorizeLinks(
       rawResults,
       productName,
       manufacturer,
       client
     );
+    cost.categorizationCalls += 1;
+    cost.inputTokens += catIn;
+    cost.outputTokens += catOut;
+    cost.estimatedUsd += catCostUsd;
+
+    let categorizedLinks = categorizedLinksRaw;
     
     debugLog(`After categorization: ${categorizedLinks.length} links`);
     categorizedLinks.forEach((l, i) => {
@@ -462,6 +549,7 @@ Return SPECIFIC document pages (NOT homepages, NOT category pages).`,
       categorizedLinks: sortedLinks,
       byType,
       industryWideEpds,
+      costSummary: cost,
     };
   } catch (error) {
     console.error('Documentation search error:', error);
@@ -475,6 +563,7 @@ Return SPECIFIC document pages (NOT homepages, NOT category pages).`,
       categorizedLinks: [],
       byType: { epd: [], hpd: [], declare: [], voc: [], product_page: [], other: [] },
       industryWideEpds,
+      costSummary: cost,
     };
   }
 }
@@ -502,15 +591,16 @@ function manufacturerFoundInText(manufacturer: string, text: string): boolean {
 }
 
 /**
- * Use AI to categorize each link with detailed confidence levels
+ * Use AI to categorize each link with detailed confidence levels.
+ * Returns categorized links plus token usage for cost tracking.
  */
 async function categorizeLinks(
   results: SearchResult[],
   productName: string,
   manufacturer: string | null,
   client: OpenAI
-): Promise<CategorizedLink[]> {
-  if (results.length === 0) return [];
+): Promise<{ links: CategorizedLink[]; inputTokens: number; outputTokens: number; costUsd: number }> {
+  if (results.length === 0) return { links: [], inputTokens: 0, outputTokens: 0, costUsd: 0 };
 
   const linksText = results.map((r, i) => 
     `${i + 1}. URL: ${r.url}\n   Title: ${r.title}\n   Snippet: ${r.snippet}`
@@ -588,7 +678,11 @@ IMPORTANT:
     });
 
     const responseText = response.choices[0]?.message?.content || '';
-    
+    const catUsage = (response as any).usage;
+    const inputTokens = catUsage?.prompt_tokens ?? 0;
+    const outputTokens = catUsage?.completion_tokens ?? 0;
+    const costUsd = catUsage?.total_cost ?? calcPerplexityCost('sonar', inputTokens, outputTokens);
+
     let categories: Array<{
       index: number;
       category: string;
@@ -608,7 +702,7 @@ IMPORTANT:
     }
 
     // Merge with original results and calculate numeric confidence
-    return results.map((result, i) => {
+    const links = results.map((result, i) => {
       const cat = categories.find(c => c.index === i + 1);
       
       let confidenceLevel: LinkConfidence = 'general_page';
@@ -785,15 +879,443 @@ IMPORTANT:
         needsVerification,
       };
     });
+    return { links, inputTokens, outputTokens, costUsd };
   } catch (error) {
     console.error('Categorization error:', error);
-    return results.map(r => ({
-      ...r,
-      category: 'unknown' as const,
-      confidence: 0,
-      confidenceLevel: 'general_page' as LinkConfidence,
-      reason: 'Categorization failed',
-    }));
+    return {
+      links: results.map(r => ({
+        ...r,
+        category: 'unknown' as const,
+        confidence: 0,
+        confidenceLevel: 'general_page' as LinkConfidence,
+        reason: 'Categorization failed',
+      })),
+      inputTokens: 0,
+      outputTokens: 0,
+      costUsd: 0,
+    };
+  }
+}
+
+// --- Helpers shared between legacy and consolidated paths ---
+
+/** Returns true if a URL points to a specific product entry in a known registry (not a homepage). */
+function isSpecificRegistryUrl(url: string): boolean {
+  const u = url.toLowerCase();
+  return (
+    u.includes('environdec.com/library/epd') ||
+    (u.includes('hpdrepository') && u.includes('/repository/')) ||
+    u.includes('declare.living-future.org/products/') ||
+    (u.includes('spot.ul.com') && u.includes('/products/'))
+  );
+}
+
+interface ForceClassifyResult {
+  category: CategorizedLink['category'];
+  confidenceLevel: LinkConfidence;
+  reason: string;
+  isGenericHomepage?: boolean;
+}
+
+/**
+ * Force-classify a URL based on known patterns, independent of LLM output.
+ * Returns null when no pattern matches — caller should keep existing category.
+ */
+function forceClassifyUrl(url: string, title: string): ForceClassifyResult | null {
+  const urlLower = url.toLowerCase();
+  const titleLower = title.toLowerCase();
+
+  // Reject generic registry homepages
+  const genericHomepages = [
+    'https://hpdrepository.hpd-collaborative.org',
+    'https://hpdrepository.hpd-collaborative.org/',
+    'https://declare.living-future.org',
+    'https://declare.living-future.org/',
+    'https://spot.ul.com',
+    'https://spot.ul.com/',
+    'https://www.environdec.com',
+    'https://www.environdec.com/',
+  ];
+  if (genericHomepages.includes(url)) {
+    return { category: 'unknown', confidenceLevel: 'general_page', reason: 'Generic registry homepage', isGenericHomepage: true };
+  }
+
+  const isTechnicalReport =
+    urlLower.includes('icc-es.org') ||
+    urlLower.includes('icc-es') ||
+    titleLower.includes('icc-es') ||
+    titleLower.includes('technical report') ||
+    titleLower.includes('esr-');
+
+  // EPD
+  if (urlLower.includes('environdec.com/library/epd')) {
+    return { category: 'epd', confidenceLevel: 'direct_document', reason: 'EPD from International EPD System (environdec.com)' };
+  }
+  if (!isTechnicalReport && (
+    (urlLower.includes('epd') && urlLower.endsWith('.pdf')) ||
+    (titleLower.includes('epd') && (titleLower.includes('pdf') || titleLower.includes('environmental'))) ||
+    titleLower.includes('environmental product declaration')
+  )) {
+    return { category: 'epd', confidenceLevel: 'direct_document', reason: 'EPD document (PDF)' };
+  }
+
+  // HPD
+  if (urlLower.includes('hpdrepository.hpd-collaborative.org') && urlLower.includes('/repository/')) {
+    return { category: 'hpd', confidenceLevel: 'direct_document', reason: 'HPD from HPD Repository' };
+  }
+  if (
+    (urlLower.includes('hpd') && urlLower.endsWith('.pdf')) ||
+    (titleLower.includes('hpd') && titleLower.includes('pdf')) ||
+    // Title alone insufficient — "Health Product Declaration Open Standard" is a generic info page
+    (titleLower.includes('health product declaration') && urlLower.endsWith('.pdf'))
+  ) {
+    return { category: 'hpd', confidenceLevel: 'direct_document', reason: 'HPD document (PDF)' };
+  }
+
+  // Declare
+  if (urlLower.includes('declare.living-future.org/products/')) {
+    return { category: 'declare', confidenceLevel: 'direct_document', reason: 'Declare label from Living Future' };
+  }
+  if (titleLower.includes('declare label') || titleLower.includes('red list free')) {
+    return { category: 'declare', confidenceLevel: 'direct_document', reason: 'Declare/Red List Free certification' };
+  }
+
+  // VOC / GREENGUARD
+  if (urlLower.includes('spot.ul.com') && urlLower.includes('/main-app/products/')) {
+    return { category: 'voc', confidenceLevel: 'direct_document', reason: 'GREENGUARD/VOC from UL SPOT' };
+  }
+  if (titleLower.includes('greenguard') || urlLower.includes('greenguard')) {
+    return { category: 'voc', confidenceLevel: 'direct_document', reason: 'GREENGUARD certification' };
+  }
+
+  // Confidence boosts (no category change)
+  if (
+    urlLower.includes('environdec.com/library/epd') ||
+    urlLower.includes('hpdrepository.hpd-collaborative.org') ||
+    urlLower.includes('declare.living-future.org/products/')
+  ) {
+    return { category: 'epd', confidenceLevel: 'direct_document', reason: 'Registry URL' };
+  }
+
+  return null;
+}
+
+// --- Consolidated v2 path ---
+
+// JSON schema for sonar-pro structured output (one call per product covers all doc types)
+const DOC_SEARCH_SCHEMA = {
+  type: 'object',
+  properties: {
+    epd:          { $ref: '#/$defs/DocSlot' },
+    hpd:          { $ref: '#/$defs/DocSlot' },
+    declare:      { $ref: '#/$defs/DocSlot' },
+    voc:          { $ref: '#/$defs/DocSlot' },
+    product_page: { $ref: '#/$defs/DocSlot' },
+  },
+  required: ['epd', 'hpd', 'declare', 'voc', 'product_page'],
+  additionalProperties: false,
+  $defs: {
+    DocSlot: {
+      type: 'object',
+      properties: {
+        citation_index: {
+          description: '1-based index into the citations array. null if not found.',
+          anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }],
+        },
+        confidence: {
+          type: 'string',
+          enum: ['direct_document', 'catalog_page', 'product_line_doc', 'sustainability_page', 'news_article', 'general_page'],
+        },
+        reason: { type: 'string' },
+      },
+      required: ['citation_index', 'confidence', 'reason'],
+      additionalProperties: false,
+    },
+  },
+};
+
+const CONSOLIDATED_SYSTEM_PROMPT = `You are a building-product sustainability documentation expert.
+
+Search the web for EPD, HPD, Declare, VOC/GREENGUARD certifications and the product page for the given product.
+
+For each document type, return the 1-based citation_index that best matches (corresponding to the [1], [2] ... references in search results). Set to null if no match found.
+
+CONFIDENCE LEVELS (choose the most accurate):
+- direct_document: Actual EPD/HPD PDF or registry page (environdec.com, hpdrepository, declare.living-future.org, spot.ul.com)
+- catalog_page: Documentation library or downloads page
+- product_line_doc: Same manufacturer but possibly a different product variant or product line
+- sustainability_page: General sustainability page that may link to docs
+- news_article: News about a certification, NOT the actual certificate
+- general_page: Any other page
+
+RULES:
+- Reference ONLY indices that appear in the search results; do not invent numbers
+- Prefer direct registry URLs (environdec, hpdrepository, declare, spot.ul.com) over manufacturer pages
+- BE INCLUSIVE: If you find a registry document (EPD/HPD/Declare) from the SAME MANUFACTURER even for a different product variant, use confidence "product_line_doc" rather than returning null — having a related doc is better than nothing
+- If a citation comes from hpdrepository.hpd-collaborative.org or environdec.com, it is almost certainly relevant — prefer it over null
+- Only set citation_index to null if there is truly no credible result of any kind for that doc type`;
+
+/**
+ * Consolidated v2: ONE sonar-pro call per product covers doc search + categorization.
+ * ~1 API call vs the legacy 6 calls (5 searches + 1 categorization).
+ * Uses native citations (real URLs) instead of LLM-generated text.
+ */
+async function searchForDocumentationConsolidated(
+  productName: string,
+  manufacturer: string | null,
+  perplexityApiKey: string,
+  onProgress?: (message: string) => void,
+): Promise<DocSearchResult> {
+  const searchTerms = manufacturer ? `${manufacturer} ${productName}` : productName;
+  const searchQuery = `${searchTerms} EPD HPD Declare VOC GREENGUARD product page`;
+
+  const cost: ScanCostSummary = {
+    provider: 'perplexity-v2',
+    searchCalls: 0,
+    categorizationCalls: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    estimatedUsd: 0,
+  };
+
+  const client = new OpenAI({
+    apiKey: perplexityApiKey,
+    baseURL: 'https://api.perplexity.ai',
+  });
+
+  const industryWideEpds = findIndustryWideEpds(productName);
+
+  try {
+    onProgress?.('Searching for all documentation...');
+
+    const userPrompt = `Find sustainability documentation for:
+Product: ${productName}${manufacturer ? `\nManufacturer: ${manufacturer}` : ''}
+
+Search for: EPD environmental product declaration, HPD health product declaration, Declare label, VOC/GREENGUARD certification, and the product page.
+
+For each type, return the citation_index (1-based) of the best match from search results, or null if not found.`;
+
+    const response = await (client.chat.completions.create as Function)({
+      model: 'sonar-pro',
+      messages: [
+        { role: 'system', content: CONSOLIDATED_SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
+      ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'doc_search', schema: DOC_SEARCH_SCHEMA },
+      },
+      web_search_options: { search_context_size: 'high' },
+      temperature: 0,
+    });
+
+    const usage = (response as any).usage;
+    if (usage) {
+      cost.inputTokens = usage.prompt_tokens ?? 0;
+      cost.outputTokens = usage.completion_tokens ?? 0;
+      cost.estimatedUsd = usage?.total_cost ?? calcPerplexityCost('sonar-pro', cost.inputTokens, cost.outputTokens);
+    }
+    cost.searchCalls = 1;
+
+    // Native search results — real URLs + metadata from Perplexity's web search
+    interface PerplexitySearchResult { url: string; title: string; snippet?: string; date?: string }
+    const rawCitations: string[] = (response as any).citations ?? [];
+    const rawSearchResults: PerplexitySearchResult[] = (response as any).search_results ?? [];
+    // Prefer search_results (has title/snippet); fall back to bare citations if unavailable
+    const searchResults: PerplexitySearchResult[] = rawSearchResults.length > 0
+      ? rawSearchResults
+      : rawCitations.map(url => ({ url, title: '', snippet: '' }));
+    debugLog(`[v2] Got ${searchResults.length} search results (${rawCitations.length} raw citations)`);
+    searchResults.forEach((sr, i) => debugLog(`  [${i + 1}] ${sr.url} | ${sr.title}`));
+
+    // Parse the structured JSON output
+    const responseText = response.choices[0]?.message?.content || '{}';
+    let parsed: Record<string, { citation_index: number | null; confidence: string; reason: string }> = {};
+    try {
+      parsed = JSON.parse(responseText);
+    } catch {
+      debugLog('[v2] Failed to parse structured response:', responseText);
+    }
+    debugLog('[v2] Parsed slots:', JSON.stringify(parsed));
+
+    const DOC_TYPE_MAP: Array<{ key: string; category: CategorizedLink['category'] }> = [
+      { key: 'epd',          category: 'epd' },
+      { key: 'hpd',          category: 'hpd' },
+      { key: 'declare',      category: 'declare' },
+      { key: 'voc',          category: 'voc' },
+      { key: 'product_page', category: 'product_page' },
+    ];
+
+    let categorizedLinks: CategorizedLink[] = [];
+    const usedUrls = new Set<string>(); // deduplicate across doc-type slots
+
+    for (const { key, category } of DOC_TYPE_MAP) {
+      const slot = parsed[key];
+      if (!slot) continue;
+
+      const idx = slot.citation_index;
+      if (idx === null || idx === undefined || idx < 1) continue;
+
+      const sr = searchResults[idx - 1]; // 1-based → 0-based
+      const url = sr?.url;
+      if (!url || !url.startsWith('http')) continue;
+      if (usedUrls.has(url)) {
+        debugLog(`[v2] Skipping duplicate URL for slot ${key}: ${url}`);
+        continue;
+      }
+      if (isFabricatedUrl(url)) {
+        debugLog(`[v2] Rejected fabricated URL: ${url}`);
+        continue;
+      }
+
+      const title = sr?.title ?? '';
+      const snippet = sr?.snippet ?? '';
+
+      // URL-pattern classifier overrides LLM label when pattern is unambiguous
+      const forced = forceClassifyUrl(url, title);
+      if (forced?.isGenericHomepage) continue;
+
+      const resolvedCategory: CategorizedLink['category'] = forced?.category ?? category;
+      const confidenceLevel: LinkConfidence = forced?.confidenceLevel ?? (slot.confidence as LinkConfidence) ?? 'general_page';
+      const reason = forced?.reason ?? slot.reason ?? '';
+      const confidence = CONFIDENCE_DESCRIPTIONS[confidenceLevel]?.score ?? 0.3;
+
+      // Flag for manufacturer verification when not a known registry URL
+      const needsVerification =
+        confidenceLevel === 'product_line_doc' ||
+        (!!manufacturer && !isSpecificRegistryUrl(url) && !manufacturerFoundInText(manufacturer, url));
+
+      categorizedLinks.push({
+        url,
+        title,
+        snippet,
+        category: resolvedCategory,
+        confidence,
+        confidenceLevel,
+        reason,
+        needsVerification,
+      });
+      usedUrls.add(url);
+    }
+
+    // Registry fallback: scan ALL search results for known registry patterns the LLM may have missed.
+    // Only includes URLs where the manufacturer name is found in title/snippet (prevents Danish/European
+    // manufacturer EPDs and generic standard pages from slipping through).
+    for (const sr of searchResults) {
+      if (!sr.url || !sr.url.startsWith('http')) continue;
+      if (usedUrls.has(sr.url)) continue;
+      if (isFabricatedUrl(sr.url)) continue;
+      const forced = forceClassifyUrl(sr.url, sr.title ?? '');
+      if (!forced || forced.isGenericHomepage) continue;
+      if (forced.confidenceLevel !== 'direct_document') continue; // only strong registry patterns
+      // Require manufacturer name in title/snippet to avoid wrong-manufacturer registry docs
+      if (manufacturer) {
+        const metaText = `${sr.title ?? ''} ${sr.snippet ?? ''} ${sr.url}`;
+        if (!manufacturerFoundInText(manufacturer, metaText)) {
+          debugLog(`[v2] Registry fallback skipped (manufacturer not in meta): ${sr.url}`);
+          continue;
+        }
+      }
+      debugLog(`[v2] Registry fallback: ${sr.url} → ${forced.category}`);
+      // Use product_line_doc so downstream knows this wasn't LLM-confirmed as exact-product match
+      categorizedLinks.push({
+        url: sr.url,
+        title: sr.title ?? '',
+        snippet: sr.snippet ?? '',
+        category: forced.category,
+        confidence: CONFIDENCE_DESCRIPTIONS['product_line_doc']?.score ?? 0.5,
+        confidenceLevel: 'product_line_doc',
+        reason: `[auto-detected] ${forced.reason}`,
+        needsVerification: true,
+      });
+      usedUrls.add(sr.url);
+    }
+
+    debugLog(`[v2] ${categorizedLinks.length} links before validation`);
+
+    // Stage 4: URL validation (identical to legacy path)
+    const linksToValidate = categorizedLinks.filter(
+      l => l.category !== 'wrong_manufacturer' && l.category !== 'unknown'
+    );
+    onProgress?.(`Validating ${linksToValidate.length} URLs...`);
+
+    const validationResults = await Promise.all(
+      linksToValidate.map(async (link, index) => {
+        try {
+          if (index % 2 === 0 || index === linksToValidate.length - 1) {
+            onProgress?.(`Validating URLs... (${index + 1}/${linksToValidate.length})`);
+          }
+          const result = await validateUrlComplete(link.url, manufacturer);
+          return { url: link.url, result };
+        } catch {
+          return {
+            url: link.url,
+            result: { valid: true, usable: true, manufacturerMatch: true, reason: 'Validation error' } as CombinedValidationResult,
+          };
+        }
+      })
+    );
+
+    const validationMap = new Map(validationResults.map(r => [r.url, r.result]));
+
+    categorizedLinks = categorizedLinks
+      .map(link => {
+        const v = validationMap.get(link.url);
+        if (!v) return link;
+        if (!v.usable) {
+          return { ...link, category: 'unknown' as const, confidence: 0, reason: `REJECTED (not usable): ${v.reason}` };
+        }
+        if (!v.manufacturerMatch) {
+          return { ...link, category: 'wrong_manufacturer' as const, confidence: 0, reason: `REJECTED: ${v.reason}` };
+        }
+        return link;
+      })
+      .filter(l => l.category !== 'unknown');
+
+    debugLog(`[v2] ${categorizedLinks.length} links after validation`);
+
+    const sortedLinks = [...categorizedLinks].sort((a, b) => b.confidence - a.confidence);
+
+    const byType = {
+      epd:          sortedLinks.filter(l => l.category === 'epd'),
+      hpd:          sortedLinks.filter(l => l.category === 'hpd'),
+      declare:      sortedLinks.filter(l => l.category === 'declare'),
+      voc:          sortedLinks.filter(l => l.category === 'voc'),
+      product_page: sortedLinks.filter(l => l.category === 'product_page'),
+      other:        sortedLinks.filter(l => ['manufacturer', 'unknown', 'wrong_manufacturer'].includes(l.category)),
+    };
+
+    // Progress summary
+    const foundParts: string[] = [];
+    if (byType.epd.length)          foundParts.push(`${byType.epd.length} EPD`);
+    if (byType.hpd.length)          foundParts.push(`${byType.hpd.length} HPD`);
+    if (byType.declare.length)      foundParts.push(`${byType.declare.length} Declare`);
+    if (byType.voc.length)          foundParts.push(`${byType.voc.length} VOC`);
+    if (byType.product_page.length) foundParts.push(`${byType.product_page.length} product page`);
+    onProgress?.(foundParts.length ? `Found: ${foundParts.join(', ')}` : 'No documentation found');
+
+    return {
+      product: productName,
+      manufacturer,
+      searchQuery,
+      rawResults: [],
+      categorizedLinks: sortedLinks,
+      byType,
+      industryWideEpds,
+      costSummary: cost,
+    };
+  } catch (error) {
+    console.error('[v2] Consolidated doc search error:', error);
+    return {
+      product: productName,
+      manufacturer,
+      searchQuery,
+      rawResults: [],
+      categorizedLinks: [],
+      byType: { epd: [], hpd: [], declare: [], voc: [], product_page: [], other: [] },
+      industryWideEpds,
+      costSummary: cost,
+    };
   }
 }
 
