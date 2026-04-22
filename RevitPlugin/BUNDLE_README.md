@@ -48,7 +48,7 @@ Copy the `Materialdex.bundle` folder to one of these locations:
 %ProgramData%\Autodesk\ApplicationPlugins\
 ```
 
-After copying, restart Revit 2026. The plugin will appear in the "Materialdex" ribbon tab.
+After copying, restart Revit. The plugin will appear in the "Materialdex" ribbon tab.
 
 ## Package Creation
 
@@ -76,7 +76,7 @@ To rebuild the bundle package:
 The main manifest file that defines:
 - Plugin metadata (name, version, description)
 - Company information
-- Runtime requirements (Revit 2026, Windows 64-bit)
+- Runtime requirements (Revit 2025 and up, Windows 64-bit)
 - Component registration
 
 ### Contents Folder
@@ -91,7 +91,7 @@ Contains all plugin files:
 
 After installation, verify the plugin:
 
-1. Launch Revit 2026
+1. Launch Revit 2025 or later
 2. Check for "Materialdex" tab in the ribbon
 3. Open Revit's Add-ins dialog: **Manage → Add-ins**
 4. Verify Materialdex appears in the list without errors
@@ -124,7 +124,7 @@ The plugin is distributed directly via GitHub Releases. Download the ZIP from th
 ## Version Information
 
 - **Version:** 2.0.0
-- **Revit Version:** 2025, 2026, and 2027
+- **Revit Version:** 2025 and up
 - **.NET Version:** 8.0
 - **Platform:** Windows 64-bit
 

@@ -11,7 +11,7 @@ A free Revit plugin that helps architects find sustainable building material alt
 
 ## Supported Versions
 
-Revit 2025, 2026, and 2027 · Windows 64-bit
+Revit 2025 and up · Windows 64-bit
 
 ## Installation
 
@@ -65,7 +65,7 @@ OPENAI_API_KEY=sk-...        # optional fallback
 
 ### Building the Revit plugin
 
-Requires .NET 8 SDK and Revit 2025 or 2026 installed at the default path (used to compile against the API).
+Requires .NET 8 SDK and Revit 2025 or later installed at the default path (used to compile against the API).
 
 ```cmd
 cd RevitPlugin

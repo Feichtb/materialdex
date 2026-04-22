@@ -48,7 +48,7 @@ install.bat
 
 ## Running the Plugin
 
-1. **Launch Revit 2025 or 2026**
+1. **Launch Revit 2025 or later**
 
 2. **Find Materialdex** in the ribbon:
    - Look for the **Materialdex** tab

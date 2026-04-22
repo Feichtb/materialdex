@@ -1545,7 +1545,7 @@ function Closing() {
               fontFamily: T.serif, fontSize: 14, color: T.inkMid,
               margin: 0, lineHeight: 1.6,
             }}>
-              Free. Revit 2025 and 2026. Windows.
+              Free. Revit 2025 and up. Windows.
             </p>
           </div>
         </FadeIn>

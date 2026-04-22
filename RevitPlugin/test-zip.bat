@@ -74,7 +74,7 @@ echo You can now test installation by:
 echo 1. Extracting the ZIP manually
 echo 2. Copying Materialdex.bundle to:
 echo    %AppData%\Autodesk\ApplicationPlugins\
-echo 3. Launching Revit 2026
+echo 3. Launching Revit
 echo.
 echo Test files are in: %TESTDIR%\
 echo (You can delete this folder after testing)

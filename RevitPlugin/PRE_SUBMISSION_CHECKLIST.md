@@ -57,7 +57,7 @@ Not committed (in .gitignore):
 
 - [ ] Plugin builds cleanly in Release mode: `dotnet build Materialdex.csproj -c Release`
 - [ ] Production URL is set in `MaterialdexDockablePane.xaml.cs` (`USE_PRODUCTION = true`, correct Netlify URL)
-- [ ] Tested in Revit 2025 or 2026 on a real model — materials extract, scans complete
+- [ ] Tested in Revit 2025 or later on a real model — materials extract, scans complete
 
 ### Package
 

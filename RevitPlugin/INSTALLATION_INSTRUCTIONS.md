@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-**Revit 2025, 2026, and 2027** (Windows 64-bit)
+**Revit 2025 and up** (Windows 64-bit)
 
 ## Installation
 
@@ -50,7 +50,7 @@ To confirm the plugin loaded correctly:
 ### Plugin tab not appearing
 
 - Confirm the bundle folder is in the correct location (not inside a subfolder)
-- Confirm you're using Revit 2025, 2026, or 2027
+- Confirm you're using Revit 2025 or later
 - Restart Revit after installation
 - Check **Manage → Add-ins** for error messages
 
@@ -69,7 +69,7 @@ Use the per-user location (`%AppData%`) — it does not require admin rights.
 
 | Requirement | Details |
 |------------|---------|
-| Revit | 2025, 2026, or 2027 |
+| Revit | 2025 and up |
 | OS | Windows 10 or 11 (64-bit) |
 | .NET | 8.0 Runtime (included with Revit) |
 | WebView2 | Pre-installed on Windows 10/11 |

@@ -38,6 +38,7 @@ interface MinimalLayoutProps {
   hasMoreMaterials?: boolean;
   isLoadingMaterials?: boolean;
   onSettingsChange?: (settings: Partial<AppSettings>) => void;
+  onProjectChange?: (project: Partial<ProjectInfo>) => void;
   onRefresh?: () => void;
 }
 
@@ -68,6 +69,7 @@ export default function MinimalLayout({
   hasMoreMaterials = false,
   isLoadingMaterials = false,
   onSettingsChange,
+  onProjectChange,
   onRefresh,
 }: MinimalLayoutProps) {
   const [view, setView] = useState<View>('scan');
@@ -1155,6 +1157,8 @@ export default function MinimalLayout({
         <InfoDialog
           settings={settings}
           onSettingsChange={onSettingsChange}
+          project={project}
+          onProjectChange={onProjectChange}
           onClose={() => setShowSettings(false)}
           freeScansRemaining={freeScansRemaining}
           userApiKey={userApiKey}
@@ -1169,15 +1173,22 @@ export default function MinimalLayout({
 interface InfoDialogProps {
   settings: AppSettings;
   onSettingsChange: (settings: Partial<AppSettings>) => void;
+  project: ProjectInfo;
+  onProjectChange?: (project: Partial<ProjectInfo>) => void;
   onClose: () => void;
   freeScansRemaining: number | null;
   userApiKey: string;
   onUserApiKeyChange: (key: string) => void;
 }
 
-function InfoDialog({ settings, onSettingsChange, onClose, freeScansRemaining, userApiKey, onUserApiKeyChange }: InfoDialogProps) {
+function InfoDialog({ settings, onSettingsChange, project, onProjectChange, onClose, freeScansRemaining, userApiKey, onUserApiKeyChange }: InfoDialogProps) {
   const [showKey, setShowKey] = useState(false);
   const [keyDraft, setKeyDraft] = useState(userApiKey);
+  const [goalsDraft, setGoalsDraft] = useState(project.goals);
+
+  const handleSaveGoals = () => {
+    onProjectChange?.({ goals: goalsDraft });
+  };
 
   const handleSaveKey = () => {
     onUserApiKeyChange(keyDraft.trim());
@@ -1216,6 +1227,26 @@ function InfoDialog({ settings, onSettingsChange, onClose, freeScansRemaining, u
             <p className="text-sm text-revit-text/80 leading-relaxed">
               Simply select a material and click <span className="text-revit-success font-medium">Find Products</span> to get started.
             </p>
+          </div>
+
+          {/* Project Goals */}
+          <div className="space-y-2 pt-4 border-t border-revit-border">
+            <div className="text-[10px] uppercase tracking-widest text-revit-primary">Project Goals</div>
+            <p className="text-xs text-revit-text/60 leading-relaxed">
+              Sustainability priorities for this project — e.g. LEED Gold, local sourcing, low VOC. Included in every material scan.
+            </p>
+            <textarea
+              value={goalsDraft}
+              onChange={(e) => setGoalsDraft(e.target.value)}
+              onBlur={handleSaveGoals}
+              disabled={!onProjectChange}
+              placeholder="e.g. Achieve LEED Gold. Prioritize low-carbon materials and local sourcing within 500 miles. Avoid Red List chemicals."
+              rows={3}
+              className="w-full bg-revit-dark border border-revit-border rounded px-3 py-2 text-sm text-revit-text placeholder:text-revit-text/30 focus:border-revit-primary focus:outline-none focus:ring-1 focus:ring-revit-primary/20 resize-none disabled:opacity-50"
+            />
+            {goalsDraft !== project.goals && (
+              <p className="text-[10px] text-revit-text/50">Click away or close to save.</p>
+            )}
           </div>
 
           {/* Free Tier Usage */}

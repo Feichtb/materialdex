@@ -121,6 +121,7 @@ export default function Home() {
         hasMoreMaterials={false}
         isLoadingMaterials={revitMaterials.isLoading}
         onSettingsChange={setSettings}
+        onProjectChange={setProject}
         onRefresh={() => {
           if (isRevitPlugin && revitMaterials.refresh) {
             revitMaterials.refresh();

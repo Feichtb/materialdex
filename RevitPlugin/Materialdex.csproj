@@ -13,7 +13,7 @@
     <AssemblyVersion>2.0.0</AssemblyVersion>
     <FileVersion>2.0.0</FileVersion>
     <Authors>Ben Feicht</Authors>
-    <Description>Sustainable Materials Suggestor for Revit 2025 and 2026</Description>
+    <Description>Sustainable Materials Suggestor for Revit 2025 and up</Description>
     
     <!-- Output to a folder we can easily copy to Revit addins -->
     <OutputPath>bin\$(Configuration)\</OutputPath>

@@ -58,7 +58,7 @@ echo.
 echo The Materialdex plugin has been installed to:
 echo %INSTALL_DIR%\Materialdex.bundle
 echo.
-echo Please restart Revit 2026 to load the plugin.
+echo Please restart Revit to load the plugin.
 echo Look for the "Materialdex" tab in the Revit ribbon.
 echo.
 goto :end

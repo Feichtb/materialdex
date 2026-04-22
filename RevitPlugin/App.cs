@@ -12,7 +12,7 @@ using Autodesk.Revit.UI.Events;
 namespace Materialdex
 {
     /// <summary>
-    /// Main application class that initializes the Materialdex plugin for Revit 2025 and 2026.
+    /// Main application class that initializes the Materialdex plugin for Revit 2025 and up.
     /// Creates a ribbon panel with buttons to launch the Materialdex web interface.
     /// </summary>
     public class App : IExternalApplication

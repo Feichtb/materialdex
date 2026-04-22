@@ -24,7 +24,7 @@ Communication: Revit <-> WebView2 JavaScript bridge (postMessage). Revit sends m
 
 ### Build & Deploy
 - **Framework:** .NET 8.0, WPF, x64 only
-- **Target Revit:** 2025 and 2026
+- **Target Revit:** 2025 and up
 - **NuGet:** Microsoft.Web.WebView2 v1.0.2739.15, Newtonsoft.Json v13.0.3
 - **Build:** `dotnet build Materialdex.csproj -c Release` or use `build.bat`
 - **Package for release:** `package-for-store.bat` creates `Materialdex.bundle/` structure
