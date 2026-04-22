@@ -11,11 +11,11 @@ A free Revit plugin that helps architects find sustainable building material alt
 
 ## Supported Versions
 
-Revit 2025 and 2026 · Windows 64-bit
+Revit 2025, 2026, and 2027 · Windows 64-bit
 
 ## Installation
 
-1. Download `Materialdex-v2.0.0.zip` from the [Releases page](../../releases)
+1. Download `Materialdex-v2.0.0.zip` from the [Releases page](https://github.com/Feichtb/materialdex/releases)
 2. Extract the ZIP
 3. Copy the `Materialdex.bundle` folder to one of these locations:
    - **Per-user** (recommended): `%AppData%\Autodesk\ApplicationPlugins\`
@@ -65,7 +65,7 @@ OPENAI_API_KEY=sk-...        # optional fallback
 
 ### Building the Revit plugin
 
-Requires .NET 8 SDK and Revit 2025 or 2026 installed at the default path.
+Requires .NET 8 SDK and Revit 2025 or 2026 installed at the default path (used to compile against the API).
 
 ```cmd
 cd RevitPlugin

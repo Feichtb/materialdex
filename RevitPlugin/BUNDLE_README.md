@@ -124,7 +124,7 @@ The plugin is distributed directly via GitHub Releases. Download the ZIP from th
 ## Version Information
 
 - **Version:** 2.0.0
-- **Revit Version:** 2026
+- **Revit Version:** 2025, 2026, and 2027
 - **.NET Version:** 8.0
 - **Platform:** Windows 64-bit
 
@@ -132,5 +132,5 @@ The plugin is distributed directly via GitHub Releases. Download the ZIP from th
 
 For issues or questions:
 - Email: ben.materialdex@gmail.com
-- GitHub: https://github.com/benfeicht/materialdex
+- GitHub: https://github.com/Feichtb/materialdex
 

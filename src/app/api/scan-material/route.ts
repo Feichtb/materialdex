@@ -76,6 +76,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // In production, free scans route to Firebase — Netlify only handles BYOK
+    if (!body.userApiKey && process.env.NODE_ENV === 'production') {
+      return NextResponse.json({ error: 'API key required' }, { status: 401 });
+    }
+
     // Validate user API key if provided
     if (body.userApiKey !== undefined) {
       if (typeof body.userApiKey !== 'string' || body.userApiKey.trim().length < 20 || body.userApiKey.length > 200) {

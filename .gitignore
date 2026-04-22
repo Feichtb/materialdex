@@ -85,3 +85,6 @@ eval/
 # Outdated App Store screenshots
 store screenshots/
 
+# Marketing site archive (old drafts, not for public repo)
+marketing-site/archive/
+

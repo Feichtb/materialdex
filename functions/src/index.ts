@@ -3,6 +3,7 @@ import {onRequest} from "firebase-functions/v2/https";
 import {setGlobalOptions} from "firebase-functions/v2";
 import OpenAI from "openai";
 import {Request, Response} from "express";
+import * as crypto from "crypto";
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -137,6 +138,42 @@ const CONFIDENCE_SCORES: Record<LinkConfidence, number> = {
   general_page: 0.3,
   wrong_manufacturer: 0,
 };
+
+// ============================================================================
+// IP RATE LIMITING
+// ============================================================================
+
+const RATE_LIMIT = 50;
+const RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+async function checkIpRateLimit(ip: string): Promise<boolean> {
+  try {
+    const db = admin.firestore();
+    const key = crypto.createHash("sha256").update(ip).digest("hex").substring(0, 32);
+    const docRef = db.collection("rateLimit").doc(key);
+    const now = Date.now();
+
+    return db.runTransaction(async (tx) => {
+      const doc = await tx.get(docRef);
+      if (!doc.exists) {
+        tx.set(docRef, {count: 1, windowStart: now});
+        return true;
+      }
+      const data = doc.data()!;
+      if (now - data.windowStart > RATE_WINDOW_MS) {
+        tx.set(docRef, {count: 1, windowStart: now});
+        return true;
+      }
+      if (data.count >= RATE_LIMIT) return false;
+      tx.update(docRef, {count: admin.firestore.FieldValue.increment(1)});
+      return true;
+    });
+  } catch (err) {
+    // Fail open — don't block users if Firestore is unavailable
+    console.error("[RATE-LIMIT] Firestore error, allowing request:", err);
+    return true;
+  }
+}
 
 // ============================================================================
 // OPENAI CLIENTS
@@ -923,6 +960,15 @@ export const scanMaterial = onRequest(
       try {
         if (req.method !== "POST") {
           sendError("Method not allowed");
+          return;
+        }
+
+        const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
+          || req.ip
+          || "unknown";
+        const allowed = await checkIpRateLimit(ip);
+        if (!allowed) {
+          sendError("Rate limit exceeded. Try again in an hour.");
           return;
         }
 

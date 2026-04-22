@@ -12,7 +12,7 @@
   UpgradeCode="{B8E5C9A2-3B7D-4E6F-8A1C-9D2E3F4B5C6B}"
   HelpFile="./Contents/Help.html"
   Icon="./Contents/Resources/materialdex-32.png"
-  OnlineDocumentation="https://materialdex.benfeicht.com"
+  OnlineDocumentation="https://github.com/Feichtb/materialdex/releases"
   SupportedLocales="Enu">
   <CompanyDetails
     Name="Ben Feicht"
