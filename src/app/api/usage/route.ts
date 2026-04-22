@@ -3,8 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const FREE_SCAN_LIMIT = 50;
 
+const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function isValidDeviceId(id: string | null | undefined): id is string {
-  return typeof id === 'string' && id.length >= 10 && id.length <= 100;
+  return typeof id === 'string' && UUID_V4_RE.test(id);
 }
 
 async function getUsageCount(deviceId: string): Promise<number> {

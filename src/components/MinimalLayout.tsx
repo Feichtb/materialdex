@@ -46,6 +46,39 @@ type View = 'scan' | 'library';
 
 const CUSTOM_MATERIAL_ID = '__custom__';
 
+// Encrypt/decrypt the user's Perplexity key before writing to localStorage.
+// Uses AES-GCM with a key derived from the device ID via PBKDF2, so the
+// encrypted blob is device-specific and unreadable if copied to another machine.
+const STORAGE_SALT = new TextEncoder().encode('materialdex-key-v1');
+
+async function deriveStorageKey(deviceId: string): Promise<CryptoKey> {
+  const raw = await crypto.subtle.importKey('raw', new TextEncoder().encode(deviceId), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: STORAGE_SALT, iterations: 100_000, hash: 'SHA-256' },
+    raw,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  );
+}
+
+async function encryptForStorage(value: string, deviceId: string): Promise<string> {
+  const key = await deriveStorageKey(deviceId);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(value));
+  const combined = new Uint8Array(12 + ciphertext.byteLength);
+  combined.set(iv);
+  combined.set(new Uint8Array(ciphertext), 12);
+  return btoa(String.fromCharCode(...combined));
+}
+
+async function decryptFromStorage(b64: string, deviceId: string): Promise<string> {
+  const combined = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const key = await deriveStorageKey(deviceId);
+  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: combined.slice(0, 12) }, key, combined.slice(12));
+  return new TextDecoder().decode(decrypted);
+}
+
 // Doc type display config — -900 text on -50 bg passes WCAG AA on warm parchment
 const DOC_TYPE_CONFIG = {
   epd:          { label: 'EPD',     fullLabel: 'Environmental Product Declaration', color: 'text-green-900 doc-badge-epd',     bgColor: 'bg-green-50 doc-badge-epd' },
@@ -95,31 +128,63 @@ export default function MinimalLayout({
   // Initialize device ID and user API key from localStorage on mount
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    let id = localStorage.getItem('materialdex_device_id');
-    if (!id) {
-      id = crypto.randomUUID();
-      localStorage.setItem('materialdex_device_id', id);
-    }
-    setDeviceId(id);
-    const savedKey = localStorage.getItem('materialdex_user_api_key') || '';
-    setUserApiKey(savedKey);
-    // Only check usage if user doesn't have their own key
-    if (!savedKey) {
-      fetch(`/api/usage?deviceId=${encodeURIComponent(id)}`)
-        .then(r => r.ok ? r.json() : null)
-        .then(data => { if (data) setFreeScansRemaining(data.remaining); })
-        .catch(() => {});
-    }
+    (async () => {
+      let id = localStorage.getItem('materialdex_device_id');
+      if (!id) {
+        id = crypto.randomUUID();
+        localStorage.setItem('materialdex_device_id', id);
+      }
+      setDeviceId(id);
+
+      // Load API key: try encrypted storage first, fall back to legacy plaintext
+      let savedKey = '';
+      const encBlob = localStorage.getItem('materialdex_user_api_key_enc');
+      if (encBlob) {
+        try {
+          savedKey = await decryptFromStorage(encBlob, id);
+        } catch {
+          // Blob is corrupt or from a different device — discard it
+          localStorage.removeItem('materialdex_user_api_key_enc');
+        }
+      }
+      if (!savedKey) {
+        const legacy = localStorage.getItem('materialdex_user_api_key');
+        if (legacy) {
+          savedKey = legacy;
+          // Migrate plaintext key to encrypted storage silently
+          try {
+            localStorage.setItem('materialdex_user_api_key_enc', await encryptForStorage(legacy, id));
+            localStorage.removeItem('materialdex_user_api_key');
+          } catch { /* keep plaintext if SubtleCrypto unavailable */ }
+        }
+      }
+
+      setUserApiKey(savedKey);
+      if (!savedKey) {
+        fetch(`/api/usage?deviceId=${encodeURIComponent(id)}`)
+          .then(r => r.ok ? r.json() : null)
+          .then(data => { if (data) setFreeScansRemaining(data.remaining); })
+          .catch(() => {});
+      }
+    })();
   }, []);
 
   const handleUserApiKeyChange = (key: string) => {
     setUserApiKey(key);
-    if (typeof window !== 'undefined') {
-      if (key) {
-        localStorage.setItem('materialdex_user_api_key', key);
-      } else {
-        localStorage.removeItem('materialdex_user_api_key');
-      }
+    if (typeof window === 'undefined') return;
+    if (key && deviceId) {
+      encryptForStorage(key, deviceId)
+        .then(blob => {
+          localStorage.setItem('materialdex_user_api_key_enc', blob);
+          localStorage.removeItem('materialdex_user_api_key');
+        })
+        .catch(() => {
+          // SubtleCrypto unavailable — fall back to plaintext
+          localStorage.setItem('materialdex_user_api_key', key);
+        });
+    } else {
+      localStorage.removeItem('materialdex_user_api_key_enc');
+      localStorage.removeItem('materialdex_user_api_key');
     }
   };
 

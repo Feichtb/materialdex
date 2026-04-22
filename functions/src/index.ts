@@ -140,6 +140,28 @@ const CONFIDENCE_SCORES: Record<LinkConfidence, number> = {
 };
 
 // ============================================================================
+// CORS
+// ============================================================================
+
+const ALLOWED_ORIGINS = [
+  "https://materialdex.netlify.app",
+  "http://localhost:3000",
+  "http://localhost:3001",
+];
+
+function applyCorsHeaders(req: Request, res: Response): boolean {
+  const origin = (req.headers.origin as string) || "";
+  const allowed = ALLOWED_ORIGINS.includes(origin);
+  if (allowed) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  return allowed;
+}
+
+// ============================================================================
 // IP RATE LIMITING
 // ============================================================================
 
@@ -810,22 +832,19 @@ export const scanMaterial = onRequest(
   {
     timeoutSeconds: 540, // 9 minutes
     memory: "512MiB",
-    cors: true, // Enable CORS
   },
   (req: Request, res: Response) => {
-    // Handle preflight OPTIONS request
+    const originAllowed = applyCorsHeaders(req, res);
+
     if (req.method === "OPTIONS") {
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
       res.status(200).end();
       return;
     }
 
-    // Set CORS headers for streaming responses
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    if (!originAllowed) {
+      res.status(403).json({error: "Forbidden"});
+      return;
+    }
 
     // Set headers for SSE - disable buffering for streaming
     res.setHeader("Content-Type", "text/event-stream");
@@ -1296,10 +1315,10 @@ export const scanMaterial = onRequest(
 
 // Health check endpoint
 export const health = onRequest(
-  {
-    cors: true,
-  },
+  {},
   (req: Request, res: Response) => {
+    applyCorsHeaders(req, res);
+    if (req.method === "OPTIONS") { res.status(200).end(); return; }
     res.json({status: "ok", timestamp: new Date().toISOString()});
   }
 );
