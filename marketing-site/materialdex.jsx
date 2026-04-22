@@ -1530,7 +1530,7 @@ function Closing() {
             border: `1px solid ${T.rule}`, borderRadius: 8,
             padding: "36px 28px", margin: "24px 0", background: T.bg,
           }}>
-            <a href="https://github.com/Feichtb/materialdex/releases/download/v2.0.0/Materialdex-2.0.0.zip" style={{ textDecoration: "none" }}>
+            <a href="https://github.com/Feichtb/materialdex/releases/" style={{ textDecoration: "none" }}>
               <div style={{
                 display: "inline-block",
                 background: T.accentTx, color: "#fff",
