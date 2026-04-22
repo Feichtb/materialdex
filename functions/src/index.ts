@@ -153,7 +153,7 @@ async function checkIpRateLimit(ip: string): Promise<boolean> {
     const docRef = db.collection("rateLimit").doc(key);
     const now = Date.now();
 
-    return db.runTransaction(async (tx) => {
+    return await db.runTransaction(async (tx) => {
       const doc = await tx.get(docRef);
       if (!doc.exists) {
         tx.set(docRef, {count: 1, windowStart: now});
