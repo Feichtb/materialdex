@@ -1,6 +1,6 @@
 # Materialdex Revit Plugin
 
-This is the Revit 2026 plugin for Materialdex - a sustainable building materials recommendation tool.
+This is the Materialdex plugin for Revit - a sustainable building materials recommendation tool. Supports Revit 2025 and up.
 
 ## Prerequisites
 
