@@ -219,7 +219,7 @@ function Hero() {
   }, []);
 
   return (
-    <section ref={ref} style={{ minHeight: "175vh", position: "relative", background: T.bg }}>
+    <section ref={ref} style={{ minHeight: "100vh", position: "relative", background: T.bg }}>
       <div style={{
         position: "sticky", top: 0, height: "100vh",
         display: "flex", flexDirection: "column",
@@ -239,28 +239,20 @@ function Hero() {
             fontSize: "clamp(40px, 7.5vw, 76px)",
             fontWeight: 400, fontStyle: "italic",
             color: T.ink, lineHeight: 1.13, margin: 0,
-            opacity: Math.min(1, p * 3.5),
-            transform: `translateY(${Math.max(0, 32 - p * 120)}px)`,
           }}>
             How Do Architects Know They're Choosing the Right Materials?
           </h1>
 
           <div style={{
             width: 40, height: 1, background: T.accent, margin: "28px 0",
-            opacity: Math.min(1, (p - 0.06) * 6),
-            transform: `scaleX(${Math.min(1, (p - 0.05) * 5)})`,
-            transformOrigin: "left",
           }} />
 
-          <div style={{
-            opacity: Math.min(1, (p - 0.1) * 5),
-            transform: `translateY(${Math.max(0, 16 - (p - 0.08) * 70)}px)`,
-          }}>
+          <div>
             <p style={{
               fontFamily: T.serif, fontSize: 15, color: T.inkMid,
               lineHeight: 1.65, margin: "0 0 12px",
             }}>
-              Sustainable material selection is harder for architects than it should be. I built a free Revit plugin to help fix that, and here's how I made it.
+              Every material you specify has an embodied carbon footprint, a health story, and a lifecycle. Almost none of that is visible when you're making material selections.
             </p>
             <a href="#download" style={{
               fontFamily: T.mono, fontSize: 11, letterSpacing: 2,
@@ -376,9 +368,9 @@ function WhyItMatters() {
         borderBottom: `1px solid ${T.rule}`,
         margin: "8px 0 36px",
       }}>
-        <StatItem value={40}  suffix="%" label="of global CO2 from buildings"      started={startedIdx >= 0} />
-        <StatItem value={11}  suffix="%" label="from building materials alone"      started={startedIdx >= 1} />
-        <StatItem value={500} suffix="+" label="avg miles a material travels"       started={startedIdx >= 2} />
+        <StatItem value={39}  suffix="%" label="of global CO2 from buildings"                               started={startedIdx >= 0} />
+        <StatItem value={11}  suffix="%" label="from building materials alone"                               started={startedIdx >= 1} />
+        <StatItem value={16}  suffix="%" label="of a building's embodied carbon from material transportation" started={startedIdx >= 2} />
       </div>
 
       <FadeIn delay={160}>
@@ -443,14 +435,14 @@ function MaterialSurprise() {
       label:     "Insulation",
       animStart: 0.5,
       animEnd:   1,
-      fact:      "Legacy XPS rigid foam has 40x the climate impact of mineral wool at the same R-value. Nearly half of that warming doesn't come from making it. It comes from a blowing agent gas that leaks silently out of the foam over the next 75 years.",
+      fact:      "Legacy XPS rigid foam has 40x the climate impact of mineral wool at the same R-value. Nearly half of that warming comes from a blowing agent gas that leaks out of the foam over the next 75 years.",
     },
     {
       src:       "animations/Animation_sheathing.lottie",
       label:     "Sheathing",
       animStart: 0,
       animEnd:   1,
-      fact:      "OSB from a sustainably certified mill and uncertified OSB look identical in your model and on a construction drawing. The environmental difference only shows up if you go looking for the manufacturer's third-party documentation.",
+      fact:      "OSB is made from small-diameter trees and forest thinnings, wood that would otherwise be low-value waste. But traditional OSB is bonded with urea-formaldehyde resins that off-gas into the building long after construction. HPD or Declare labels can identify this.",
     },
     {
       src:       "animations/Animation_sealants.lottie",
@@ -725,9 +717,8 @@ function AfterTheHouse() {
         <Prose>
           After I completed the house project, I was happy with the materials I had selected,
           but I was less happy about the material process. The house ended up being Net-0
-          energy, with the lowest blower door rating the contractor had seen, and most
-          importantly happy clients! But I wanted to find a better way of finding the best
-          materials for the specific project.
+          energy, and most importantly happy clients! But I wanted to find a better way of
+          finding the best materials for the specific project.
         </Prose>
       </FadeIn>
     </Wrap>
@@ -743,8 +734,8 @@ function AIIdea() {
         <Prose>
           I realized that my Revit model already contained every material on the project, as
           well as data about the climate and region the project is in, so I made a plugin for
-          Revit that links this data with an AI researcher that can recommend materials
-          specific for that project.
+          Revit that links this data with an AI that can recommend materials specific for that
+          project.
         </Prose>
       </FadeIn>
       <FadeIn delay={160}>
@@ -1520,9 +1511,7 @@ function Closing() {
       <div style={{ maxWidth: 580, margin: "0 auto" }}>
         <FadeIn>
           <Prose>
-            Materialdex is free to use. It costs me per use to run, but my goal right now is
-            to get architects better access to material information. Give it a try on your
-            own projects:
+            Materialdex is free to use. Give it a try on your own projects:
           </Prose>
         </FadeIn>
         <FadeIn delay={100}>
@@ -1554,10 +1543,25 @@ function Closing() {
   );
 }
 
+/* ═══ NAV ════════════════════════════════════════════════════════ */
+function Nav() {
+  return (
+    <nav style={{ position: "fixed", top: 0, right: 0, zIndex: 200, padding: "16px 24px" }}>
+      <a href="https://benfeicht.com" style={{
+        fontFamily: T.mono, fontSize: 12, letterSpacing: 2,
+        textTransform: "uppercase", color: T.accentTx, textDecoration: "none",
+      }}>
+        benfeicht.com
+      </a>
+    </nav>
+  );
+}
+
 /* ═══ ROOT ═══════════════════════════════════════════════════════ */
 export default function App() {
   return (
     <div style={{ background: T.bg, color: T.ink }}>
+      <Nav />
       <style>{`
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
         html { scroll-behavior: smooth; }
